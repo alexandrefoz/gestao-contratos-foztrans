@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gestão de Contratos — FOZTRANS</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  body{background:#f1f3f6;}
+  #tela-login{min-height:100vh;display:flex;align-items:center;justify-content:center;}
+  .login-card{max-width:380px;width:100%;}
+  #app{display:none;}
+  #sidebar{min-height:100vh;background:#1F3864;color:#fff;}
+  #sidebar a{color:#cdd8ec;text-decoration:none;display:block;padding:10px 16px;border-radius:6px;}
+  #sidebar a.active, #sidebar a:hover{background:rgba(255,255,255,.12);color:#fff;}
+  .tipo-row{cursor:pointer;}
+  .tipo-row.active{background:#e7f0ff;}
+  .drag-handle{cursor:grab;color:#999;}
+  .badge-bloqueante{background:#dc3545;}
+  .badge-anexo{background:#6c757d;}
+</style>
+</head>
+<body>
+
+<div id="tela-login">
+  <div class="card login-card shadow-sm">
+    <div class="card-body p-4">
+      <h5 class="card-title mb-1">Gestão de Contratos</h5>
+      <p class="text-muted small mb-3">FOZTRANS — acesso restrito</p>
+      <div id="loginErro" class="alert alert-danger py-2 small" style="display:none"></div>
+      <div class="mb-2">
+        <label class="form-label small">E-mail</label>
+        <input type="email" id="loginEmail" class="form-control form-control-sm">
+      </div>
+      <div class="mb-3">
+        <label class="form-label small">Senha</label>
+        <input type="password" id="loginSenha" class="form-control form-control-sm">
+      </div>
+      <button class="btn btn-primary btn-sm w-100 mb-2" onclick="entrar()">Entrar</button>
+      <button class="btn btn-outline-secondary btn-sm w-100" onclick="entrarComGoogle()">Entrar com Google</button>
+      <p class="text-muted mt-3 mb-0" style="font-size:11px">
+        Login com Google requer o provedor configurado no painel do Supabase
+        (Authentication → Providers → Google). Até lá, use e-mail/senha
+        cadastrados pelo administrador em Authentication → Users.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="d-flex">
+  <div id="sidebar" class="p-3" style="width:220px">
+    <div class="fw-bold mb-3">📋 Gestão de Contratos</div>
+    <a href="#" class="active" data-tela="checklists" onclick="irPara('checklists');return false">Checklists por tipo de evento</a>
+    <a href="#" data-tela="tipos" onclick="irPara('tipos');return false">Tipos de evento</a>
+    <hr style="border-color:rgba(255,255,255,.2)">
+    <div class="small" id="userEmail" style="opacity:.7"></div>
+    <button class="btn btn-sm btn-outline-light w-100 mt-2" onclick="sair()">Sair</button>
+  </div>
+
+  <div class="flex-grow-1 p-4">
+
+    <!-- TELA: TIPOS DE EVENTO -->
+    <div id="tela-tipos" style="display:none">
+      <h5 class="mb-3">Tipos de evento</h5>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered bg-white">
+          <thead class="table-light">
+            <tr><th>Rótulo</th><th>Instrumento</th><th>Regra de gatilho</th><th>Antecedência (dias)</th><th>Exige parecer?</th><th>Ativo</th></tr>
+          </thead>
+          <tbody id="tbody-tipos"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TELA: CHECKLISTS -->
+    <div id="tela-checklists">
+      <h5 class="mb-3">Checklists por tipo de evento</h5>
+      <div class="row">
+        <div class="col-md-3">
+          <div class="list-group" id="lista-tipos-checklist"></div>
+        </div>
+        <div class="col-md-9">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0" id="titulo-checklist-atual">—</h6>
+            <button class="btn btn-sm btn-primary" onclick="abrirModalEtapa()">+ Nova etapa</button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered bg-white align-middle">
+              <thead class="table-light">
+                <tr><th></th><th>#</th><th>Etapa</th><th>Responsável</th><th>Fundamento</th><th>Anexo?</th><th>Bloqueante?</th><th></th></tr>
+              </thead>
+              <tbody id="tbody-checklist"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal de etapa -->
+<div class="modal" id="modalEtapa" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Etapa do checklist</h6>
+        <button type="button" class="btn-close" onclick="fecharModalEtapa()"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="eOrdem">
+        <div class="mb-2"><label class="form-label small">Etapa</label><input class="form-control form-control-sm" id="eEtapa"></div>
+        <div class="mb-2"><label class="form-label small">Descrição</label><textarea class="form-control form-control-sm" id="eDescricao" rows="2"></textarea></div>
+        <div class="row">
+          <div class="col-6 mb-2"><label class="form-label small">Responsável padrão</label><input class="form-control form-control-sm" id="eResponsavel"></div>
+          <div class="col-6 mb-2"><label class="form-label small">Prazo relativo (dias)</label><input type="number" class="form-control form-control-sm" id="ePrazo"></div>
+        </div>
+        <div class="mb-2"><label class="form-label small">Fundamento</label><input class="form-control form-control-sm" id="eFundamento"></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="eExigeAnexo"><label class="form-check-label small">Exige anexo</label></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="eBloqueante"><label class="form-check-label small">Bloqueante (impede concluir o evento)</label></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-sm btn-outline-danger me-auto" id="btnExcluirEtapa" onclick="excluirEtapa()" style="display:none">Excluir</button>
+        <button class="btn btn-sm btn-secondary" onclick="fecharModalEtapa()">Cancelar</button>
+        <button class="btn btn-sm btn-primary" onclick="salvarEtapa()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop" id="backdrop" style="display:none"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
