@@ -1,11 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const BUCKET_ANEXOS = 'anexos-eventos';
 
 let tiposEvento = [];
 let tipoSelecionadoId = null;
 let checklistAtual = [];
+
+let eventos = [];
+let eventoAtual = null;        // registro do evento selecionado
+let checklistExecAtual = [];   // linhas de checklist_exec do evento selecionado
+let anexosPorItem = {};        // { checklist_exec_id: [anexo, ...] }
 
 // ---------------------------------------------------------------- auth
 async function entrar() {
@@ -69,11 +76,13 @@ async function aoLogar() {
   document.getElementById('app').style.display = 'flex';
   document.getElementById('userEmail').textContent = user.email;
   await carregarTiposEvento();
-  irPara('checklists');
+  await carregarEventos();
+  irPara('eventos');
 }
 
 // ------------------------------------------------------------ navegação
 function irPara(tela) {
+  document.getElementById('tela-eventos').style.display = tela === 'eventos' ? 'block' : 'none';
   document.getElementById('tela-tipos').style.display = tela === 'tipos' ? 'block' : 'none';
   document.getElementById('tela-checklists').style.display = tela === 'checklists' ? 'block' : 'none';
   document.querySelectorAll('#sidebar a').forEach(a => a.classList.toggle('active', a.dataset.tela === tela));
@@ -254,6 +263,330 @@ async function excluirEtapa() {
   await carregarChecklist(tipoSelecionadoId);
 }
 
+// ------------------------------------------------------------- eventos
+async function carregarEventos() {
+  const { data, error } = await supabase
+    .from('eventos')
+    .select('*, contratos(numero_ano, contratada, objeto), tipos_evento(rotulo)')
+    .order('data_abertura', { ascending: false })
+    .limit(50);
+  if (error) { alert('Erro ao carregar eventos: ' + error.message); return; }
+  eventos = data || [];
+  renderListaEventos();
+  if (eventos.length && !eventoAtual) await selecionarEvento(eventos[0].id);
+}
+
+function renderListaEventos() {
+  const el = document.getElementById('lista-eventos');
+  el.innerHTML = eventos.map(e => `
+    <a href="#" class="list-group-item list-group-item-action ${eventoAtual?.id === e.id ? 'active' : ''}"
+       onclick="window.selecionarEvento('${e.id}');return false">
+      <div class="fw-semibold small">${esc(e.contratos?.numero_ano || '—')} — ${esc(e.tipos_evento?.rotulo || '—')}</div>
+      <div class="text-muted" style="font-size:11px">${esc(e.contratos?.contratada || '')} · ${esc(e.status)}</div>
+    </a>
+  `).join('') || '<div class="text-muted small p-2">Nenhum evento aberto ainda.</div>';
+}
+
+async function selecionarEvento(id) {
+  eventoAtual = eventos.find(e => e.id === id);
+  renderListaEventos();
+  document.getElementById('evento-vazio').style.display = 'none';
+  document.getElementById('evento-detalhe').style.display = 'block';
+  document.getElementById('dossieAviso').style.display = 'none';
+  document.getElementById('ev-titulo').textContent =
+    `${eventoAtual.contratos?.numero_ano || '—'} — ${eventoAtual.tipos_evento?.rotulo || '—'}`;
+  document.getElementById('ev-subtitulo').textContent =
+    `${eventoAtual.contratos?.contratada || '—'} · ${eventoAtual.contratos?.objeto || ''}`;
+
+  const { data, error } = await supabase
+    .from('checklist_exec')
+    .select('*')
+    .eq('evento_id', id)
+    .order('ordem');
+  if (error) { alert('Erro ao carregar checklist do evento: ' + error.message); return; }
+  checklistExecAtual = data || [];
+
+  const ids = checklistExecAtual.map(c => c.id);
+  anexosPorItem = {};
+  if (ids.length) {
+    const { data: anexos, error: eAnexos } = await supabase
+      .from('anexos')
+      .select('*')
+      .in('checklist_exec_id', ids)
+      .order('ordem');
+    if (eAnexos) { alert('Erro ao carregar anexos: ' + eAnexos.message); }
+    (anexos || []).forEach(a => {
+      (anexosPorItem[a.checklist_exec_id] ||= []).push(a);
+    });
+  }
+  renderChecklistExec();
+}
+
+function renderChecklistExec() {
+  const total = checklistExecAtual.length;
+  const concluidas = checklistExecAtual.filter(c => c.status === 'concluida' || c.status === 'nao_se_aplica').length;
+  document.getElementById('ev-progresso').textContent = total ? `${concluidas}/${total} etapas concluídas` : '—';
+
+  const el = document.getElementById('lista-checklist-exec');
+  el.innerHTML = checklistExecAtual.map(c => {
+    const anexos = anexosPorItem[c.id] || [];
+    return `
+    <div class="card mb-2">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="fw-semibold">${c.ordem}. ${esc(c.etapa)} ${c.bloqueante ? '<span class="badge badge-bloqueante">bloqueante</span>' : ''} ${c.exige_anexo ? '<span class="badge badge-anexo">exige anexo</span>' : ''}</div>
+          <select class="form-select form-select-sm w-auto" onchange="window.atualizarCampoExec('${c.id}','status',this.value)">
+            ${['pendente','em_andamento','concluida','nao_se_aplica'].map(s =>
+              `<option value="${s}" ${c.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+          </select>
+        </div>
+        ${c.descricao ? `<div class="text-muted small mb-1">${esc(c.descricao)}</div>` : ''}
+        <div class="row g-2 mt-1">
+          <div class="col-md-6">
+            <label class="form-label small mb-0">Responsável</label>
+            <input class="form-control form-control-sm" value="${esc(c.responsavel || '')}" placeholder="${esc(c.responsavel_padrao||'')}"
+              onblur="window.atualizarCampoExec('${c.id}','responsavel',this.value)">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-0">Data de conclusão</label>
+            <input type="date" class="form-control form-control-sm" value="${c.data_conclusao || ''}"
+              onchange="window.atualizarCampoExec('${c.id}','data_conclusao',this.value || null)">
+          </div>
+        </div>
+        <label class="form-label small mb-0 mt-2">Justificativa / manifestação (vai para o relatório)</label>
+        <textarea class="form-control form-control-sm" rows="2"
+          onblur="window.atualizarCampoExec('${c.id}','texto_justificativa',this.value)">${esc(c.texto_justificativa || '')}</textarea>
+
+        <div class="mt-2">
+          <label class="form-label small mb-1">Anexos</label>
+          <div class="d-flex flex-wrap gap-2 mb-1" id="anexos-${c.id}">
+            ${anexos.map((a, i) => `
+              <span class="badge bg-light text-dark border">
+                📎 ${esc(a.nome_arquivo)}
+                <a href="#" onclick="window.baixarAnexo('${a.id}');return false" title="Baixar">⬇</a>
+                <a href="#" onclick="window.excluirAnexo('${a.id}','${c.id}');return false" title="Excluir" class="text-danger">✕</a>
+              </span>
+            `).join('') || '<span class="text-muted small">nenhum anexo ainda</span>'}
+          </div>
+          <input type="file" class="form-control form-control-sm" multiple
+            onchange="window.enviarAnexos('${c.id}', this.files)">
+        </div>
+      </div>
+    </div>
+  `;
+  }).join('') || '<div class="text-muted">Este evento não tem etapas no checklist.</div>';
+}
+
+async function atualizarCampoExec(id, campo, valor) {
+  const { error } = await supabase.from('checklist_exec').update({ [campo]: valor }).eq('id', id);
+  if (error) { alert('Erro ao salvar: ' + error.message); return; }
+  const item = checklistExecAtual.find(c => c.id === id);
+  if (item) item[campo] = valor;
+  if (campo === 'status') renderChecklistExec();
+}
+
+// -------------------------------------------------------------- anexos
+async function enviarAnexos(checklistExecId, fileList) {
+  for (const file of Array.from(fileList)) {
+    const caminho = `${checklistExecId}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await supabase.storage.from(BUCKET_ANEXOS).upload(caminho, file);
+    if (upErr) { alert('Erro ao enviar ' + file.name + ': ' + upErr.message); continue; }
+    const hash = await sha256(file);
+    const { error: insErr } = await supabase.from('anexos').insert({
+      checklist_exec_id: checklistExecId,
+      ordem: (anexosPorItem[checklistExecId]?.length || 0) + 1,
+      nome_arquivo: file.name,
+      caminho_storage: caminho,
+      tamanho_bytes: file.size,
+      hash_arquivo: hash
+    });
+    if (insErr) alert('Enviado, mas erro ao registrar metadado de ' + file.name + ': ' + insErr.message);
+  }
+  await selecionarEvento(eventoAtual.id);
+}
+
+async function sha256(file) {
+  const buf = await file.arrayBuffer();
+  const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function baixarAnexo(anexoId) {
+  const a = Object.values(anexosPorItem).flat().find(x => x.id === anexoId);
+  if (!a || !a.caminho_storage) { alert('Anexo sem arquivo (já arquivado?).'); return; }
+  const { data, error } = await supabase.storage.from(BUCKET_ANEXOS).download(a.caminho_storage);
+  if (error) { alert('Erro ao baixar: ' + error.message); return; }
+  const url = URL.createObjectURL(data);
+  const link = document.createElement('a');
+  link.href = url; link.download = a.nome_arquivo;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function excluirAnexo(anexoId, checklistExecId) {
+  if (!confirm('Excluir este anexo?')) return;
+  const a = (anexosPorItem[checklistExecId] || []).find(x => x.id === anexoId);
+  if (a?.caminho_storage) await supabase.storage.from(BUCKET_ANEXOS).remove([a.caminho_storage]);
+  const { error } = await supabase.from('anexos').delete().eq('id', anexoId);
+  if (error) { alert('Erro ao excluir: ' + error.message); return; }
+  await selecionarEvento(eventoAtual.id);
+}
+
+// -------------------------------------------------------- dossiê em PDF
+async function gerarDossie(comAnexos) {
+  const aviso = document.getElementById('dossieAviso');
+  aviso.style.display = 'none';
+
+  // Validação: item obrigatório (não "não se aplica") precisa de justificativa,
+  // e se exige_anexo, precisa de ao menos 1 anexo.
+  const bloqueios = [];
+  for (const c of checklistExecAtual) {
+    if (c.status === 'nao_se_aplica') continue;
+    if (!c.texto_justificativa || !c.texto_justificativa.trim()) {
+      bloqueios.push(`"${c.etapa}" está sem texto de justificativa/manifestação.`);
+    }
+    if (comAnexos && c.exige_anexo && !(anexosPorItem[c.id] || []).length) {
+      bloqueios.push(`"${c.etapa}" exige anexo e não tem nenhum.`);
+    }
+  }
+  if (bloqueios.length) {
+    aviso.innerHTML = '⚠️ Não é possível gerar agora:<br>' + bloqueios.map(b => '• ' + esc(b)).join('<br>');
+    aviso.style.display = 'block';
+    return;
+  }
+
+  const conteudo = await PDFDocument.create();
+  const fonteNormal = await conteudo.embedFont(StandardFonts.Helvetica);
+  const fonteNegrito = await conteudo.embedFont(StandardFonts.HelveticaBold);
+  const margem = 50, larguraPg = 595.28, alturaPg = 841.89; // A4
+
+  const itemPaginaInicio = {}; // ordem -> índice de página (0-based) dentro de `conteudo`
+  const naoMergeados = [];
+
+  for (const c of checklistExecAtual) {
+    itemPaginaInicio[c.ordem] = conteudo.getPageCount();
+    let pagina = conteudo.addPage([larguraPg, alturaPg]);
+    let y = alturaPg - margem;
+    pagina.drawText(`${c.ordem}. ${c.etapa}`, { x: margem, y, size: 12, font: fonteNegrito });
+    y -= 20;
+    const texto = c.status === 'nao_se_aplica' ? '[Não se aplica a este evento.]' : (c.texto_justificativa || '');
+    const linhas = quebrarLinhas(texto, fonteNormal, 10, larguraPg - margem * 2);
+    for (const linha of linhas) {
+      if (y < margem + 20) { pagina = conteudo.addPage([larguraPg, alturaPg]); y = alturaPg - margem; }
+      pagina.drawText(linha, { x: margem, y, size: 10, font: fonteNormal });
+      y -= 14;
+    }
+
+    const anexosItem = comAnexos ? (anexosPorItem[c.id] || []) : [];
+    for (let i = 0; i < anexosItem.length; i++) {
+      const a = anexosItem[i];
+      if (y < margem + 20) { pagina = conteudo.addPage([larguraPg, alturaPg]); y = alturaPg - margem; }
+      pagina.drawText(`Anexo ${i + 1} — ${a.nome_arquivo}`, { x: margem, y, size: 10, font: fonteNormal, color: rgb(.2,.2,.5) });
+      y -= 14;
+
+      if (!a.caminho_storage) { naoMergeados.push(`${a.nome_arquivo} (sem arquivo — já arquivado no Drive)`); continue; }
+      if (!/\.pdf$/i.test(a.nome_arquivo)) { naoMergeados.push(`${a.nome_arquivo} (formato não é PDF — não mesclado, baixe separadamente)`); continue; }
+      const { data: blob, error } = await supabase.storage.from(BUCKET_ANEXOS).download(a.caminho_storage);
+      if (error) { naoMergeados.push(`${a.nome_arquivo} (erro ao baixar: ${error.message})`); continue; }
+      try {
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const origem = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const paginasCopiadas = await conteudo.copyPages(origem, origem.getPageIndices());
+        paginasCopiadas.forEach(p => conteudo.addPage(p));
+      } catch (e) {
+        naoMergeados.push(`${a.nome_arquivo} (PDF protegido/corrompido: ${e.message})`);
+      }
+      pagina = conteudo.getPage(conteudo.getPageCount() - 1);
+    }
+  }
+
+  // Índice (assume 1 página — suficiente para os checklists atuais, até ~35 itens)
+  const indice = await PDFDocument.create();
+  const fonteIndice = await indice.embedFont(StandardFonts.Helvetica);
+  const fonteIndiceNegrito = await indice.embedFont(StandardFonts.HelveticaBold);
+  const paginaIndice = indice.addPage([larguraPg, alturaPg]);
+  let yIndice = alturaPg - margem;
+  paginaIndice.drawText('Índice', { x: margem, y: yIndice, size: 14, font: fonteIndiceNegrito });
+  yIndice -= 24;
+  const qtdPaginasCapa = 1, qtdPaginasIndice = 1;
+  for (const c of checklistExecAtual) {
+    const paginaFinal = qtdPaginasCapa + qtdPaginasIndice + itemPaginaInicio[c.ordem] + 1;
+    paginaIndice.drawText(`${c.ordem}. ${truncar(c.etapa, 70)}`, { x: margem, y: yIndice, size: 10, font: fonteIndice });
+    paginaIndice.drawText(`pág. ${paginaFinal}`, { x: larguraPg - margem - 60, y: yIndice, size: 10, font: fonteIndice });
+    yIndice -= 16;
+    if (yIndice < margem) break; // checklists muito longos: índice fica incompleto, aviso abaixo
+  }
+
+  // Capa
+  const capaDoc = await PDFDocument.create();
+  const fonteCapa = await capaDoc.embedFont(StandardFonts.Helvetica);
+  const fonteCapaNegrito = await capaDoc.embedFont(StandardFonts.HelveticaBold);
+  const paginaCapa = capaDoc.addPage([larguraPg, alturaPg]);
+  let yCapa = alturaPg - 150;
+  const linhasCapa = [
+    ['MINUTA — SUJEITA À REVISÃO', fonteCapaNegrito, 10, rgb(.7,0,0)],
+    ['', fonteCapa, 10, rgb(0,0,0)],
+    [`Contrato: ${eventoAtual.contratos?.numero_ano || '—'}`, fonteCapaNegrito, 14, rgb(0,0,0)],
+    [`Contratada: ${eventoAtual.contratos?.contratada || '—'}`, fonteCapa, 11, rgb(0,0,0)],
+    [`Objeto: ${eventoAtual.contratos?.objeto || '—'}`, fonteCapa, 11, rgb(0,0,0)],
+    [`Tipo de evento: ${eventoAtual.tipos_evento?.rotulo || '—'}`, fonteCapaNegrito, 11, rgb(0,0,0)],
+    [`Data de abertura: ${eventoAtual.data_abertura || '—'}`, fonteCapa, 11, rgb(0,0,0)],
+    ['', fonteCapa, 10, rgb(0,0,0)],
+    [`Gerado em: ${new Date().toLocaleString('pt-BR')}`, fonteCapa, 9, rgb(.4,.4,.4)],
+  ];
+  for (const [texto, fonte, tamanho, cor] of linhasCapa) {
+    if (texto) paginaCapa.drawText(texto, { x: margem, y: yCapa, size: tamanho, font: fonte, color: cor });
+    yCapa -= tamanho + 10;
+  }
+
+  // Monta documento final: capa + índice + conteúdo
+  const final = await PDFDocument.create();
+  for (const p of await final.copyPages(capaDoc, capaDoc.getPageIndices())) final.addPage(p);
+  for (const p of await final.copyPages(indice, indice.getPageIndices())) final.addPage(p);
+  for (const p of await final.copyPages(conteudo, conteudo.getPageIndices())) final.addPage(p);
+
+  // Numeração de página no rodapé, em todo o documento
+  const fonteRodape = await final.embedFont(StandardFonts.Helvetica);
+  const paginas = final.getPages();
+  paginas.forEach((p, i) => {
+    p.drawText(`${i + 1} / ${paginas.length}`, { x: larguraPg - margem - 40, y: 20, size: 9, font: fonteRodape, color: rgb(.4,.4,.4) });
+  });
+
+  const bytesFinal = await final.save();
+  const blobFinal = new Blob([bytesFinal], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blobFinal);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `MINUTA_dossie_${eventoAtual.contratos?.numero_ano?.replace(/\W+/g,'_') || 'evento'}_${comAnexos ? 'completo' : 'relatorio'}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  if (naoMergeados.length) {
+    aviso.innerHTML = '✅ Dossiê gerado. Atenção — não foi possível mesclar:<br>' + naoMergeados.map(m => '• ' + esc(m)).join('<br>');
+    aviso.className = 'alert alert-warning py-2 small';
+    aviso.style.display = 'block';
+  }
+}
+
+function quebrarLinhas(texto, fonte, tamanho, larguraMax) {
+  const palavras = String(texto || '').split(/\s+/);
+  const linhas = [];
+  let linhaAtual = '';
+  for (const palavra of palavras) {
+    const teste = linhaAtual ? linhaAtual + ' ' + palavra : palavra;
+    if (fonte.widthOfTextAtSize(teste, tamanho) > larguraMax) {
+      if (linhaAtual) linhas.push(linhaAtual);
+      linhaAtual = palavra;
+    } else {
+      linhaAtual = teste;
+    }
+  }
+  if (linhaAtual) linhas.push(linhaAtual);
+  return linhas;
+}
+
+function truncar(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -271,6 +604,13 @@ window.editarEtapa = editarEtapa;
 window.fecharModalEtapa = fecharModalEtapa;
 window.salvarEtapa = salvarEtapa;
 window.excluirEtapa = excluirEtapa;
+window.carregarEventos = carregarEventos;
+window.selecionarEvento = selecionarEvento;
+window.atualizarCampoExec = atualizarCampoExec;
+window.enviarAnexos = enviarAnexos;
+window.baixarAnexo = baixarAnexo;
+window.excluirAnexo = excluirAnexo;
+window.gerarDossie = gerarDossie;
 
 // -------------------------------------------------------------- bootstrap
 supabase.auth.getSession().then(({ data: { session } }) => {

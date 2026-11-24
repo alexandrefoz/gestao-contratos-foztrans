@@ -51,7 +51,8 @@
 <div id="app" class="d-flex">
   <div id="sidebar" class="p-3" style="width:220px">
     <div class="fw-bold mb-3">📋 Gestão de Contratos</div>
-    <a href="#" class="active" data-tela="checklists" onclick="irPara('checklists');return false">Checklists por tipo de evento</a>
+    <a href="#" class="active" data-tela="eventos" onclick="irPara('eventos');return false">Eventos</a>
+    <a href="#" data-tela="checklists" onclick="irPara('checklists');return false">Checklists por tipo de evento</a>
     <a href="#" data-tela="tipos" onclick="irPara('tipos');return false">Tipos de evento</a>
     <hr style="border-color:rgba(255,255,255,.2)">
     <div class="small" id="userEmail" style="opacity:.7"></div>
@@ -73,8 +74,40 @@
       </div>
     </div>
 
+    <!-- TELA: EVENTOS -->
+    <div id="tela-eventos">
+      <h5 class="mb-3">Eventos</h5>
+      <div class="row">
+        <div class="col-md-4">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Em andamento</h6>
+            <button class="btn btn-sm btn-outline-secondary" onclick="window.carregarEventos()">↻ Atualizar</button>
+          </div>
+          <div class="list-group" id="lista-eventos"></div>
+        </div>
+        <div class="col-md-8">
+          <div id="evento-vazio" class="text-muted p-4 text-center">Selecione um evento à esquerda.</div>
+          <div id="evento-detalhe" style="display:none">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <div>
+                <h6 class="mb-0" id="ev-titulo">—</h6>
+                <div class="text-muted small" id="ev-subtitulo">—</div>
+              </div>
+              <div class="text-end">
+                <div id="ev-progresso" class="small text-muted mb-1">—</div>
+                <button class="btn btn-sm btn-outline-primary" onclick="window.gerarDossie(false)">📄 Gerar só relatório</button>
+                <button class="btn btn-sm btn-primary" onclick="window.gerarDossie(true)">📎 Gerar dossiê completo</button>
+              </div>
+            </div>
+            <div id="dossieAviso" class="alert alert-warning py-2 small" style="display:none"></div>
+            <div id="lista-checklist-exec"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- TELA: CHECKLISTS -->
-    <div id="tela-checklists">
+    <div id="tela-checklists" style="display:none">
       <h5 class="mb-3">Checklists por tipo de evento</h5>
       <div class="row">
         <div class="col-md-3">
