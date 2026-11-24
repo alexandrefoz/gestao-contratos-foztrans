@@ -35,8 +35,18 @@
 - `apps-script/SyncContratos.gs`: código pronto para o usuário instalar na planilha real — lê por nome de cabeçalho, menu, relatório de erro por linha em aba própria, gatilho diário opcional. **Ainda não instalado pelo usuário.**
 - Achado técnico: `create_edge_function_secret` (ferramenta MCP) parou de responder no meio da sessão — segredo cadastrado manualmente pelo usuário via painel do Supabase.
 
+### ✅ Primeira sincronização real (24/11/2026)
+`SyncContratos.gs` instalado e rodado pelo usuário na planilha real.
+Corrigido um bug na guarda de `configurarSegredo()` (comparava com o
+próprio texto-placeholder; usuário substituiu as duas ocorrências ao
+colar o valor real, travando sempre — trocado para checagem por
+substring). Resultado: **43 contratos reais sincronizados**, 1 rejeitado
+(a mesma célula com duas datas em "Contrato 3/2026" já identificada na
+análise anterior — inconsistência real da planilha, não bug), dado
+fictício `[TESTE]` preservado.
+
 ### Pendente para a próxima etapa
-- Usuário instalar `SyncContratos.gs` na planilha real e rodar a primeira sincronização de verdade.
 - Replicar as migrations no projeto de teste (`FOZTRANS Contratos - Teste`) quando o conector for reautorizado para aquela organização.
 - Ver o código do dashboard Apps Script já existente (Alertas_Log/Config sugerem que existe) — ainda não compartilhado.
+- Instalar o gatilho diário (`instalarTriggerDiario()`), se o usuário quiser sincronização automática.
 - Etapa (d): painel/dashboard. Etapa (e): alertas. Etapa (f): cálculo de reajuste.
