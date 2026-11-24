@@ -409,6 +409,9 @@ function formatarMoeda(v) {
 }
 
 // -------------------------------------------------------------- painel
+let painelFiltroMax = null;    // null = sem filtro de dias; número = mostra só dias_restantes <= isso
+let painelFiltroLabel = '';
+
 async function renderPainel() {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const laranja = Number(config.DIAS_LARANJA ?? 30);
@@ -425,16 +428,20 @@ async function renderPainel() {
     .lt('prazo_previsto', hoje.toISOString().slice(0, 10))
     .in('status', ['pendente', 'em_andamento']);
   if (eAtr) console.warn('Erro ao buscar etapas atrasadas:', eAtr.message);
+  painelAtrasadasCache = atrasadas || [];
 
+  // Cada card é clicável: filtra a tabela "Próximos vencimentos" abaixo
+  // (ou navega para a tela correspondente, quando não faz sentido filtrar
+  // uma lista de contratos — eventos/etapas atrasadas).
   document.getElementById('painel-cards').innerHTML = [
-    ['Contratos ativos', ativos.length, 'primary'],
-    [`Vencendo em até ${laranja}d`, criticos.length, 'danger'],
-    [`Vencendo em até ${amarelo}d`, atencao.length, 'warning'],
-    ['Eventos em andamento', eventosAbertos.length, 'info'],
-    ['Etapas atrasadas', (atrasadas || []).length, 'dark']
-  ].map(([titulo, valor, cor]) => `
+    ['Contratos ativos', ativos.length, 'primary', `window.filtrarPainel(null, 'Contratos ativos')`],
+    [`Vencendo em até ${laranja}d`, criticos.length, 'danger', `window.filtrarPainel(${laranja}, 'Vencendo em até ${laranja} dias')`],
+    [`Vencendo em até ${amarelo}d`, atencao.length, 'warning', `window.filtrarPainel(${amarelo}, 'Vencendo em até ${amarelo} dias')`],
+    ['Eventos em andamento', eventosAbertos.length, 'info', `window.irPara('eventos')`],
+    ['Etapas atrasadas', (atrasadas || []).length, 'dark', `document.getElementById('painel-providencias').scrollIntoView({behavior:'smooth'})`]
+  ].map(([titulo, valor, cor, aoClicar]) => `
     <div class="col">
-      <div class="card border-${cor}">
+      <div class="card border-${cor}" style="cursor:pointer" onclick="${aoClicar}">
         <div class="card-body py-2 text-center">
           <div class="fs-4 fw-bold text-${cor}">${valor}</div>
           <div class="small text-muted">${titulo}</div>
@@ -455,11 +462,40 @@ async function renderPainel() {
   });
   document.getElementById('painel-providencias').innerHTML = provid.join('') || '<div class="text-muted small">Nenhuma providência pendente no momento.</div>';
 
-  const comData = contratos.filter(c => c.status === 'ativo' && c.vigencia_fim).slice(0, 15);
-  document.getElementById('painel-vencimentos').innerHTML = comData.map(c => {
+  renderPainelVencimentos();
+}
+
+let painelAtrasadasCache = [];
+
+function filtrarPainel(diasMax, rotulo) {
+  painelFiltroMax = diasMax;
+  painelFiltroLabel = rotulo;
+  renderPainelVencimentos();
+}
+
+function renderPainelVencimentos() {
+  let lista = contratos.filter(c => c.status === 'ativo' && c.vigencia_fim);
+  if (painelFiltroMax !== null) {
+    lista = lista.filter(c => { const d = diasRestantes(c.vigencia_fim); return d !== null && d <= painelFiltroMax; });
+  } else {
+    lista = lista.slice(0, 15);
+  }
+
+  const titulo = document.getElementById('painel-vencimentos-titulo');
+  if (titulo) {
+    titulo.innerHTML = painelFiltroLabel
+      ? `📅 ${esc(painelFiltroLabel)} <button class="btn btn-sm btn-link p-0" onclick="window.filtrarPainel(null,'')">(limpar filtro)</button>`
+      : '📅 Próximos vencimentos';
+  }
+
+  document.getElementById('painel-vencimentos').innerHTML = lista.map(c => {
     const sv = statusVigencia(c.vigencia_fim);
-    return `<tr><td>${esc(c.numero_ano)}</td><td class="small">${esc(c.contratada)}</td><td class="small">${formatarDataISO(c.vigencia_fim)}</td><td><span class="badge text-bg-${sv.cor}">${sv.texto}</span></td></tr>`;
-  }).join('') || '<tr><td colspan="4" class="text-muted text-center py-3">Nenhum contrato ativo com data de vigência.</td></tr>';
+    return `<tr style="cursor:pointer" onclick="window.irPara('contratos');window.selecionarContrato('${c.id}')">
+      <td>${esc(c.numero_ano)}</td><td class="small">${esc(c.contratada)}</td>
+      <td class="small">${formatarDataISO(c.vigencia_fim)}</td>
+      <td><span class="badge text-bg-${sv.cor}">${sv.texto}</span></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="text-muted text-center py-3">Nenhum contrato nessa condição.</td></tr>';
 }
 
 // ------------------------------------------------------------- eventos
@@ -815,6 +851,7 @@ window.renderContratos = renderContratos;
 window.selecionarContrato = selecionarContrato;
 window.abrirEventoNoContrato = abrirEventoNoContrato;
 window.irParaEvento = irParaEvento;
+window.filtrarPainel = filtrarPainel;
 
 // -------------------------------------------------------------- bootstrap
 supabase.auth.getSession().then(({ data: { session } }) => {
