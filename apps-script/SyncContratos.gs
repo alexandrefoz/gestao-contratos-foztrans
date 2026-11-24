@@ -28,8 +28,8 @@ var SYNC_PROP_SEGREDO_ = 'SYNC_SHARED_SECRET';
  * se preferir não deixar no código.
  */
 function configurarSegredo() {
-  var segredo = 'COLE_O_SEGREDO_AQUI';
-  if (segredo === 'COLE_O_SEGREDO_AQUI') {
+  var segredo = 'COLE_O_SEGREDO_AQUI'; // troque só esta linha pelo valor real
+  if (!segredo || segredo.indexOf('COLE_O_SEGREDO') >= 0) {
     throw new Error('Edite configurarSegredo() com o valor real do segredo antes de rodar.');
   }
   PropertiesService.getScriptProperties().setProperty(SYNC_PROP_SEGREDO_, segredo);
