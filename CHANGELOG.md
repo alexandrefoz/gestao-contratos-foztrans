@@ -1,5 +1,23 @@
 # Changelog
 
+## 24/11/2026 (continuação) — Correções pós-atualização + etapa (f): reajuste
+
+- ⚠️ **Achado real**: `sincronizar_contratos()` procurava os nomes de fiscal/gestor pela chave literal `'FISCAIS  Titular/Sup.'` (dois espaços) e `'GESTORES  Titular/Sup.'`, mas o cabeçalho da planilha tem uma quebra de linha ali, não espaço — a chave nunca batia e os campos ficavam sempre `null` no Supabase, mesmo com a planilha preenchida. Corrigido com `buscar_campo_normalizado()` (nova função auxiliar, tolerante a espaço/quebra de linha). **Efeito só aparece após rodar a sincronização de novo.**
+- Corrigido bug no painel/app.js: `renderPainelVencimentos()` e `renderContratos()` não checavam o campo `ativo` (soft-delete da sincronização), só `status` — por isso um contrato excluído da planilha (ex.: CELEPAR 7/2025 removida pelo usuário) continuava aparecendo como corrente. Ambas agora exigem `ativo = true`.
+- Contrato 5/2021 (CELEPAR – GIT_SaaS, substituído pelo Contrato 7/2025) e 4 Atas de Registro de Preço sem renovação (15/2025 KF Comércio, 13/2025 Smart Soft, 10/2025 Integra, 4/2025 Kalesi — todas ausentes da listagem oficial de vigentes e já além do prazo legal de 1 ano sem prorrogação, Lei 14.133/2021 art. 84 §4º) marcados `status = 'encerrado'` via migration. Planilha não foi tocada — é decisão de quem edita a fonte.
+- **Etapa (f) iniciada**: tabela `indices` alimentada por nova Edge Function `buscar-indices` (busca IPCA/INPC/IGP-M direto do SGS do Banco Central, sem precisar de chave/autenticação externa) + `apps-script/AtualizarIndices.gs` (reaproveita o segredo já configurado). Função `calcular_memoria_reajuste(serie, data_base, data_referencia)` calcula o fator acumulado mês a mês (número-índice) para revisão humana — nunca aplica sozinha. Falta: instalar o gatilho mensal no Apps Script, e a tela no front-end para disparar o cálculo a partir de um evento de reajuste.
+- Pendente (combinado, não iniciado): ferramenta para "varrer" um PDF de listagem oficial como o de hoje e gerar automaticamente o diff/objeto completo — viável, mas o PDF não distingue Contrato de Ata de Registro de Preço (o Número se repete entre os dois), então precisa sempre de confirmação humana no pareamento; não dá para ser 100% automático.
+
+## 24/11/2026 (continuação) — Etapa (e) concluída: envio de alertas por e-mail
+
+- Decisão: envio via **Apps Script + Gmail institucional** (não Resend), reaproveitando a mesma planilha/conta já usada na sincronização — usuário escolheu essa opção quando perguntado.
+- Nova coluna `alertas_log.email_enviado_em` separa "alerta registrado" (`enviado_em`, que na verdade é hora de registro) de "e-mail efetivamente enviado" — evita reenviar o mesmo alerta todo dia.
+- View `alertas_pendentes_envio` (só leitura, sem grant a anon/authenticated — só `service_role` acessa) junta `alertas_log` pendente com `numero_ano`/`contratada` de `contratos`.
+- Edge Function `alertas-email`: GET retorna pendências, POST marca IDs como enviados. Mesmo segredo compartilhado da sincronização (`SYNC_SHARED_SECRET`, já configurado nos secrets do projeto — não precisou criar outro). Testada com segredo inválido → `401` confirmado.
+- `apps-script/EnviarAlertas.gs`: busca pendências, agrupa por destinatário (um e-mail por pessoa cobrindo todas as pendências dela), envia via `GmailApp`, confirma de volta ao Supabase. Gatilho diário sugerido às 7h (depois do registro do Supabase, que roda ~3h10 local). **Ainda não instalado pelo usuário.**
+- `get_advisors` rodado após a migration — nenhum achado novo (view nova não aparece exposta).
+- **Pendência de dados, não de código**: os campos `contratos.fiscal_tecnico_email`/`gestor_email` ainda estão vazios na planilha real (colunas "E-mail Fiscal"/"E-mail Gestor" existem mas não foram preenchidas) — até preencher, a view de pendências fica vazia e nenhum e-mail sai, mesmo com tudo funcionando.
+
 ## 24/11/2026 (continuação) — Etapa (e): alertas + correção de segurança
 
 - ⚠️ **Achado de segurança real, corrigido no mesmo dia**: `sincronizar_contratos()` e `registrar_alertas_do_dia()` continuavam executáveis por **qualquer usuário anônimo** via REST, mesmo depois do `revoke ... from anon, authenticated` aplicado na migration original — `REVOKE` por papel nomeado não basta quando a função ainda tem `EXECUTE` concedido a `PUBLIC` (concessão padrão do Postgres ao criar função). Corrigido com `REVOKE ... FROM PUBLIC`. **Confirmado fechado**: chamada anônima de teste agora retorna `401 permission denied`. Nenhuma evidência de uso indevido no intervalo.

@@ -313,6 +313,7 @@ function renderContratos() {
   const busca = (document.getElementById('ctrBusca')?.value || '').toLowerCase();
   const statusFiltro = document.getElementById('ctrStatus')?.value || '';
   const filtrados = contratos.filter(c => {
+    if (!c.ativo) return false; // removido da planilha-fonte — não é mais um contrato corrente
     if (statusFiltro && c.status !== statusFiltro) return false;
     if (!busca) return true;
     const alvo = `${c.numero_ano} ${c.contratada} ${c.objeto}`.toLowerCase();
@@ -474,7 +475,7 @@ function filtrarPainel(diasMax, rotulo) {
 }
 
 function renderPainelVencimentos() {
-  let lista = contratos.filter(c => c.status === 'ativo' && c.vigencia_fim);
+  let lista = contratos.filter(c => c.status === 'ativo' && c.ativo && c.vigencia_fim);
   if (painelFiltroMax !== null) {
     lista = lista.filter(c => { const d = diasRestantes(c.vigencia_fim); return d !== null && d <= painelFiltroMax; });
   } else {
