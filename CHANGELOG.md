@@ -1,5 +1,14 @@
 # Changelog
 
+## 24/11/2026 (continuação) — Itens de contrato (tabela nova) + reajuste por item
+
+- Tabela `itens_contrato_saldo` criada (contrato_id, item, item_descricao, unidade, tipo_controle, quantidade/valor contratado, suprimido, solicitado, saldo, data_referencia). Espelha os campos do relatório oficial do sistema OXY (`CONTRATO_SALDO_ITENS_COM_LICITACAO`) — usuário colou a definição da query do relatório e depois o texto puro copiado das telas reais. RLS: leitura para quem tem perfil, sem grant de escrita (dado só entra por conferência manual por enquanto; Tampermonkey/importador automático fica para depois).
+- Confirmado com o usuário: reajuste real do FOZTRANS é aplicado por item, e o valor global é a soma — não um percentual único sobre o total (suposição inicial errada, corrigida). Reajuste trata dois tipos de item: `QUANTIDADE` (fator aplica no valor unitário × quantidade) e `VALOR` (fator aplica direto no valor contratado, sem quantidade própria — ex. serviços continuados mensais).
+- Nota de projeto: esta tabela foi desenhada para servir também de base para gerar TRP/TRD no futuro (projeto separado) — ver memória `project_itens_contrato_reuso_trp_trd`.
+- Itens cadastrados (dados reais, colados pelo usuário a partir do sistema OXY) para 7 contratos: Dataprom (4/2025, 8 itens), Moving Tech (4/2022, 14 itens), Rheitor (2/2025), Liderança (2/2024), Techmobi (3/2024), Sinalizações São Miguel (2/2026, 11 itens), Serttel (3/2022). Todos os totais batem com o somatório dos itens.
+- **Resolvidas 4 das 5 divergências de valor pendentes** (confirmado por planilha antiga × PDF oficial × soma dos itens OXU batendo entre si): `contratos.valor_global` corrigido para Rheitor (R$ 526.080,00), Liderança (R$ 1.123.990,80), Techmobi (R$ 7.303.114,20) e Moving Tech (R$ 2.787.520,00, estava nulo).
+- **Achado novo, não aplicado**: Serttel (3/2022) diverge tanto da planilha antiga (R$ 1.297.234,60) quanto do PDF oficial (R$ 1.250.000,00) — os itens do OXY mostram um aditivo grande (R$ 1.997.069,77) elevando o valor efetivo a ~R$ 2,31 milhões, com saldo de R$ 359.172,14. A conta interna bate perfeita, mas o valor é bem maior que os dois que já tínhamos — `contratos.valor_global` **não foi alterado**, aguardando o usuário confirmar antes de gravar.
+
 ## 24/11/2026 (continuação) — Correções pós-atualização + etapa (f): reajuste
 
 - ⚠️ **Achado real**: `sincronizar_contratos()` procurava os nomes de fiscal/gestor pela chave literal `'FISCAIS  Titular/Sup.'` (dois espaços) e `'GESTORES  Titular/Sup.'`, mas o cabeçalho da planilha tem uma quebra de linha ali, não espaço — a chave nunca batia e os campos ficavam sempre `null` no Supabase, mesmo com a planilha preenchida. Corrigido com `buscar_campo_normalizado()` (nova função auxiliar, tolerante a espaço/quebra de linha). **Efeito só aparece após rodar a sincronização de novo.**

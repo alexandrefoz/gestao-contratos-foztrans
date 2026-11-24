@@ -655,12 +655,7 @@ async function calcularReajuste() {
   }
 
   const fatorFinal = Number(data[data.length - 1].fator_acumulado);
-  const c = eventoAtual.contratos || {};
-  const base = Number(c.valor_mensal ?? c.valor_global ?? 0);
-  const valorNovo = base * fatorFinal;
-  memoriaReajusteAtual = { serie, dataBase, dataRef, fatorFinal, base, valorNovo };
-
-  out.innerHTML = `
+  const tabelaIndices = `
     <div class="table-responsive mb-2">
       <table class="table table-sm table-bordered mb-0">
         <thead class="table-light"><tr><th>Competência</th><th>${esc(serie)} (%)</th><th>Fator acumulado</th></tr></thead>
@@ -668,11 +663,68 @@ async function calcularReajuste() {
           ${data.map(m => `<tr><td>${m.competencia.slice(0, 7)}</td><td>${Number(m.indice_mensal).toFixed(2)}</td><td>${Number(m.fator_acumulado).toFixed(6)}</td></tr>`).join('')}
         </tbody>
       </table>
-    </div>
+    </div>`;
+
+  // Se o contrato tem itens cadastrados (itens_contrato_saldo), reajuste é
+  // calculado item a item e o valor global é a soma — é assim que o OXY e a
+  // prática real tratam reajuste, não um percentual único sobre o total.
+  const { data: itensRaw, error: eItens } = await supabase
+    .from('itens_contrato_saldo')
+    .select('*')
+    .eq('contrato_id', eventoAtual.contrato_id)
+    .order('data_referencia', { ascending: false });
+  if (eItens) { out.innerHTML = `<div class="alert alert-danger py-2 small mb-0">Erro ao buscar itens: ${esc(eItens.message)}</div>`; return; }
+
+  const itens = (itensRaw && itensRaw.length)
+    ? itensRaw.filter(i => i.data_referencia === itensRaw[0].data_referencia)
+    : [];
+
+  if (itens.length) {
+    const linhas = itens.map(it => {
+      const valorUnitarioNovo = it.valor_unitario != null ? Number(it.valor_unitario) * fatorFinal : null;
+      // Item tipo "VALOR" (ex.: serviço continuado mensal) não tem
+      // quantidade própria — o fator aplica direto sobre o valor contratado,
+      // não sobre quantidade × valor unitário.
+      const valorTotalNovo = it.tipo_controle === 'VALOR'
+        ? Number(it.valor_contratado) * fatorFinal
+        : valorUnitarioNovo * Number(it.quantidade_contratada);
+      return { ...it, valorUnitarioNovo, valorTotalNovo };
+    });
+    const valorGlobalAtual = linhas.reduce((s, l) => s + Number(l.valor_contratado), 0);
+    const valorGlobalNovo = linhas.reduce((s, l) => s + l.valorTotalNovo, 0);
+    memoriaReajusteAtual = { modo: 'itens', serie, dataBase, dataRef, fatorFinal, itens: linhas, valorGlobalAtual, valorGlobalNovo };
+
+    out.innerHTML = tabelaIndices + `
+      <div class="small mb-1">Fator acumulado final: <b>${fatorFinal.toFixed(6)}</b> (${((fatorFinal - 1) * 100).toFixed(2)}%) — calculado por item (${linhas.length} itens, data-ref. ${itens[0].data_referencia}):</div>
+      <div class="table-responsive mb-2">
+        <table class="table table-sm table-bordered mb-0">
+          <thead class="table-light"><tr><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor unit. atual</th><th>Valor unit. novo</th><th>Total novo</th></tr></thead>
+          <tbody>
+            ${linhas.map(l => `<tr><td>${esc(l.item)}</td><td class="small">${esc(l.item_descricao)}</td><td>${l.quantidade_contratada != null ? Number(l.quantidade_contratada) : '—'}</td><td>${formatarMoeda(l.valor_unitario)}</td><td>${l.valorUnitarioNovo != null ? formatarMoeda(l.valorUnitarioNovo) : '—'}</td><td>${formatarMoeda(l.valorTotalNovo)}</td></tr>`).join('')}
+          </tbody>
+          <tfoot><tr class="table-light fw-bold"><td colspan="5" class="text-end">Total</td><td>${formatarMoeda(valorGlobalNovo)}</td></tr></tfoot>
+        </table>
+      </div>
+      <div class="small mb-2">Valor global atual: ${formatarMoeda(valorGlobalAtual)} → Valor global com reajuste: <b>${formatarMoeda(valorGlobalNovo)}</b></div>
+      <div class="alert alert-info py-2 small mb-2">Memória de cálculo apenas calculada — nada foi gravado ainda. Confira os números antes de aplicar.</div>
+      <button class="btn btn-sm btn-success" onclick="window.aplicarReajuste()">✔ Aplicar no evento</button>
+    `;
+    return;
+  }
+
+  // Sem itens cadastrados ainda para este contrato: aplica sobre o valor
+  // global/mensal, como antes.
+  const c = eventoAtual.contratos || {};
+  const base = Number(c.valor_mensal ?? c.valor_global ?? 0);
+  const valorNovo = base * fatorFinal;
+  memoriaReajusteAtual = { modo: 'global', serie, dataBase, dataRef, fatorFinal, base, valorNovo };
+
+  out.innerHTML = tabelaIndices + `
     <div class="small mb-2">
       Fator acumulado final: <b>${fatorFinal.toFixed(6)}</b>
       (${((fatorFinal - 1) * 100).toFixed(2)}%)<br>
       Valor atual: ${formatarMoeda(base)} → Valor com reajuste: <b>${formatarMoeda(valorNovo)}</b>
+      <div class="text-muted" style="font-size:11px">Este contrato ainda não tem itens cadastrados (itens_contrato_saldo) — calculado sobre o valor global/mensal. Cadastrando os itens, o cálculo passa a ser item a item automaticamente.</div>
     </div>
     <div class="alert alert-info py-2 small mb-2">Memória de cálculo apenas calculada — nada foi gravado ainda. Confira os números antes de aplicar.</div>
     <button class="btn btn-sm btn-success" onclick="window.aplicarReajuste()">✔ Aplicar no evento</button>
@@ -681,17 +733,49 @@ async function calcularReajuste() {
 
 async function aplicarReajuste() {
   if (!memoriaReajusteAtual || !eventoAtual) return;
-  const { base, valorNovo, serie, dataRef } = memoriaReajusteAtual;
-  const { error } = await supabase
-    .from('eventos')
-    .update({
-      valor_anterior: base,
-      valor_novo: valorNovo,
-      indice_periodo: `${serie} até ${dataRef}`
-    })
-    .eq('id', eventoAtual.id);
-  if (error) { alert('Erro ao aplicar reajuste no evento: ' + error.message); return; }
-  alert('Reajuste aplicado ao evento (valor_anterior/valor_novo/indice_periodo). Lembre de seguir o checklist para formalizar o ato.');
+  const m = memoriaReajusteAtual;
+
+  if (m.modo === 'itens') {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const novasLinhas = m.itens.map(it => ({
+      contrato_id: eventoAtual.contrato_id,
+      item: it.item,
+      item_descricao: it.item_descricao,
+      unidade: it.unidade,
+      tipo_controle: it.tipo_controle,
+      lote_contrato_ordem: it.lote_contrato_ordem,
+      item_contrato_ordem: it.item_contrato_ordem,
+      quantidade_contratada: it.quantidade_contratada,
+      valor_unitario: it.valorUnitarioNovo,
+      valor_contratado: it.valorTotalNovo,
+      quantidade_suprimido: it.quantidade_suprimido,
+      valor_suprimido: it.valor_suprimido,
+      quantidade_solicitado: it.quantidade_solicitado,
+      valor_solicitado: it.valor_solicitado,
+      saldo_contrato: it.saldo_contrato,
+      valor_saldo_contrato: it.valor_saldo_contrato,
+      data_referencia: hoje,
+      origem: 'reajuste_aplicado'
+    }));
+    const { error: eItens } = await supabase
+      .from('itens_contrato_saldo')
+      .upsert(novasLinhas, { onConflict: 'contrato_id,item,data_referencia' });
+    if (eItens) { alert('Erro ao gravar novos valores de item: ' + eItens.message); return; }
+
+    const { error } = await supabase
+      .from('eventos')
+      .update({ valor_anterior: m.valorGlobalAtual, valor_novo: m.valorGlobalNovo, indice_periodo: `${m.serie} até ${m.dataRef}` })
+      .eq('id', eventoAtual.id);
+    if (error) { alert('Erro ao aplicar reajuste no evento: ' + error.message); return; }
+  } else {
+    const { error } = await supabase
+      .from('eventos')
+      .update({ valor_anterior: m.base, valor_novo: m.valorNovo, indice_periodo: `${m.serie} até ${m.dataRef}` })
+      .eq('id', eventoAtual.id);
+    if (error) { alert('Erro ao aplicar reajuste no evento: ' + error.message); return; }
+  }
+
+  alert('Reajuste aplicado ao evento (valor_anterior/valor_novo/indice_periodo' + (m.modo === 'itens' ? ' + novo snapshot de itens' : '') + '). Lembre de seguir o checklist para formalizar o ato.');
   await carregarEventos();
   await selecionarEvento(eventoAtual.id);
 }
