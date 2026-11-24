@@ -1,5 +1,15 @@
 # Changelog
 
+## 24/11/2026 (continuação) — Etapa (e): alertas + correção de segurança
+
+- ⚠️ **Achado de segurança real, corrigido no mesmo dia**: `sincronizar_contratos()` e `registrar_alertas_do_dia()` continuavam executáveis por **qualquer usuário anônimo** via REST, mesmo depois do `revoke ... from anon, authenticated` aplicado na migration original — `REVOKE` por papel nomeado não basta quando a função ainda tem `EXECUTE` concedido a `PUBLIC` (concessão padrão do Postgres ao criar função). Corrigido com `REVOKE ... FROM PUBLIC`. **Confirmado fechado**: chamada anônima de teste agora retorna `401 permission denied`. Nenhuma evidência de uso indevido no intervalo.
+- Mesma correção aplicada em `abrir_evento()` por precaução (já era `SECURITY INVOKER`, mas o grant a `PUBLIC` ficava solto).
+- View `alertas` estava `SECURITY DEFINER` por padrão (roda com o privilégio de quem criou, ignorando a RLS das tabelas por baixo para quem consulta) — corrigido com `security_invoker = true`.
+- `search_path` fixado nas funções auxiliares de sincronização/alertas (`marcos_alerta`, `email_esta_na_lista`, `normalizar_ato`, `parse_valor_brl`, `parse_regime_legal`, `parse_data_br_estrito`, `proximo_aniversario`).
+- Base de alertas construída: tabela `alertas_log` (dedup por tipo+contrato+evento+dias), view `alertas` com os 6 tipos do prompt original (fim de vigência, aniversário de reajuste, data-base de CCT, garantia a vencer, etapa atrasada, evento sem responsável), reaproveitando os marcos de dias (90/60/30/15/7/3/1) já usados na planilha. `pg_cron` diário (06:10 UTC) grava os alertas novos via `registrar_alertas_do_dia()`.
+- **Pendente**: decidir o mecanismo de envio de e-mail (Resend via Edge Function × Apps Script/Gmail institucional) — o prompt original pede para comparar as duas e deixar o usuário escolher, ainda não perguntado.
+- Cards do painel (etapa d) viraram clicáveis: filtram a tabela de próximos vencimentos, navegam para Eventos, ou rolam até Providências.
+
 ## 24/11/2026
 
 - Diagnóstico inicial da pasta de referência (`D:\Claude Backup\Gestão de Contratos\`) e dos 4 casos reais usados para validar os checklists.
