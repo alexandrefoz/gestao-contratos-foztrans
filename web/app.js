@@ -22,6 +22,31 @@ async function entrar() {
   await aoLogar();
 }
 
+async function criarConta() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  const erro = document.getElementById('loginErro');
+  erro.style.display = 'none';
+  if (!email || senha.length < 6) {
+    erro.textContent = 'Preencha e-mail e uma senha de pelo menos 6 caracteres nos campos acima, depois clique em "criar agora".';
+    erro.style.display = 'block';
+    return;
+  }
+  const { data, error } = await supabase.auth.signUp({ email, password: senha });
+  if (error) {
+    erro.textContent = '❌ ' + error.message;
+    erro.style.display = 'block';
+    return;
+  }
+  if (data.session) {
+    await aoLogar();
+  } else {
+    erro.className = 'alert alert-success py-2 small';
+    erro.textContent = 'Conta criada. Se a confirmação de e-mail estiver ativa no projeto, confira sua caixa de entrada antes de entrar.';
+    erro.style.display = 'block';
+  }
+}
+
 async function entrarComGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
   if (error) {
@@ -235,6 +260,7 @@ function esc(s) {
 
 // ---------------------------------------------------------------- expõe
 window.entrar = entrar;
+window.criarConta = criarConta;
 window.entrarComGoogle = entrarComGoogle;
 window.sair = sair;
 window.irPara = irPara;
