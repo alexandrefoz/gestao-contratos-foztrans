@@ -9,6 +9,14 @@
 - Front-end estático inicial (`web/`): login (e-mail/senha + Google, pendente configurar provedor) e tela de cadastro de checklists (tipos de evento + etapas, com reordenação). Testado localmente, sem erros de carregamento.
 - Repositório Git inicializado.
 
+## 24/11/2026 (continuação) — Deploy
+
+- Repositório publicado em `github.com/alexandrefoz/gestao-contratos-foztrans`.
+- GitHub Pages ativado (Deploy from a branch, `master`, raiz) — por isso
+  os arquivos do site foram movidos de `web/` para a raiz do repositório
+  (GitHub Pages não aceita pasta arbitrária, só raiz ou `/docs`).
+- Site no ar: https://alexandrefoz.github.io/gestao-contratos-foztrans/
+
 ### Pendente para a próxima etapa
 - Replicar as 3 migrations no projeto de teste (`FOZTRANS Contratos - Teste`) quando o conector for reautorizado para aquela organização.
 - Criar o primeiro usuário administrador (Supabase Auth + linha em `perfis_usuario`) — aguardando autorização explícita, já que é criação de conta.

@@ -57,15 +57,20 @@ neste projeto.
 
 ## Front-end
 
-- `web/` — HTML/JS/Bootstrap 5 estático, sem build, usando `supabase-js`
-  via CDN (ESM). Primeira tela: login (e-mail/senha + botão Google, que
-  precisa do provedor configurado no painel do Supabase) e tela de
-  cadastro de checklists (tipos de evento + etapas, reordenação, edição).
-- Testado localmente (servidor estático) — carrega e executa sem erro.
-  Login de verdade ainda não testado: precisa de um usuário real no
-  Supabase Auth + uma linha em `perfis_usuario` com perfil
-  `administrador`, que não criei sem autorização explícita (é criação de
-  conta).
-- Deploy automático (GitHub Pages/Netlify/Vercel) ainda não configurado —
-  pendente de decisão do usuário sobre qual serviço usar e acesso à conta
-  correspondente.
+- Raiz do repositório (`index.html`, `app.js`, `config.js`) — HTML/JS/
+  Bootstrap 5 estático, sem build, usando `supabase-js` via CDN (ESM).
+  **Não está em `web/`** — foi movido para a raiz porque o GitHub Pages
+  (modo "Deploy from a branch") só publica a raiz ou uma pasta `/docs`,
+  nunca uma pasta arbitrária.
+- Telas: login (e-mail/senha, botão "criar conta" via `signUp()`, e botão
+  Google que precisa do provedor configurado no painel do Supabase) e
+  tela de cadastro de checklists (tipos de evento + etapas, reordenação,
+  edição).
+- Deploy: GitHub Pages, repositório `github.com/alexandrefoz/gestao-contratos-foztrans`,
+  publicado em https://alexandrefoz.github.io/gestao-contratos-foztrans/ —
+  **no ar e testado em 200** (curl + confirmação do usuário). Deploy
+  automático a cada push confirmado funcionando.
+- Login de verdade ainda não testado: aguardando o usuário criar sua
+  própria conta (`alexandre.foz@gmail.com`) pelo botão "criar agora" —
+  depois disso falta só eu gravar o perfil `administrador` em
+  `perfis_usuario` via SQL.
