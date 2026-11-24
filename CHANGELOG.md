@@ -1,5 +1,11 @@
 # Changelog
 
+## 24/11/2026 (continuação) — TRP/TRD/certidões: sistema existente, não reconstruído
+
+- Achado importante: existe um projeto Apps Script separado e completo, "Emissão de Termos" (`script.google.com/.../1j9fkw2HAGsSB24-HtfrUpvs0U46sRSlSYlMwN9slFWgy7AMfQLz7hBTS`), rodando em Planilha Google + Web App publicado, cobrindo exatamente o que seria construído agora: contratos/itens/saldos próprios, certidões com OCR (detecta tipo — FGTS/CNDT/PGFN/Estadual/Municipal/Declaração art.7º XXXIII —, extrai CNPJ/razão social/validade, calcula status), geração de TRP/TRD (Anexo I/II/III) via template do Google Docs com seções de habilitação/conformidade/itens com glosa, ordens de serviço, notificações, auditoria, usuários/perfis.
+- Decisão do usuário: **não reconstruir no Supabase** — manter esse sistema como está e só linkar a partir do módulo novo. Adicionado botão "📄 TRP/TRD e certidões" na ficha do contrato (`index.html`), abrindo o Web App publicado em nova aba.
+- Limitação conhecida: o Web App não aceita parâmetro de URL para abrir direto num contrato (`doGet()` não lê `e.parameter`, `Index.html` não lê `location.search`) — o link abre a tela inicial, o usuário navega até o contrato manualmente lá dentro. Dá para evoluir depois se for útil.
+
 ## 24/11/2026 (continuação) — Itens de contrato (tabela nova) + reajuste por item
 
 - Tabela `itens_contrato_saldo` criada (contrato_id, item, item_descricao, unidade, tipo_controle, quantidade/valor contratado, suprimido, solicitado, saldo, data_referencia). Espelha os campos do relatório oficial do sistema OXY (`CONTRATO_SALDO_ITENS_COM_LICITACAO`) — usuário colou a definição da query do relatório e depois o texto puro copiado das telas reais. RLS: leitura para quem tem perfil, sem grant de escrita (dado só entra por conferência manual por enquanto; Tampermonkey/importador automático fica para depois).
