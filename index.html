@@ -51,7 +51,9 @@
 <div id="app" class="d-flex">
   <div id="sidebar" class="p-3" style="width:220px">
     <div class="fw-bold mb-3">📋 Gestão de Contratos</div>
-    <a href="#" class="active" data-tela="eventos" onclick="irPara('eventos');return false">Eventos</a>
+    <a href="#" class="active" data-tela="painel" onclick="irPara('painel');return false">Painel</a>
+    <a href="#" data-tela="contratos" onclick="irPara('contratos');return false">Contratos</a>
+    <a href="#" data-tela="eventos" onclick="irPara('eventos');return false">Eventos</a>
     <a href="#" data-tela="checklists" onclick="irPara('checklists');return false">Checklists por tipo de evento</a>
     <a href="#" data-tela="tipos" onclick="irPara('tipos');return false">Tipos de evento</a>
     <hr style="border-color:rgba(255,255,255,.2)">
@@ -60,6 +62,65 @@
   </div>
 
   <div class="flex-grow-1 p-4">
+
+    <!-- TELA: PAINEL -->
+    <div id="tela-painel">
+      <h5 class="mb-3">Painel</h5>
+      <div class="row g-3 mb-4" id="painel-cards"></div>
+      <h6 class="mb-2">⚠️ Providências</h6>
+      <div id="painel-providencias"></div>
+      <h6 class="mb-2 mt-4">📅 Próximos vencimentos</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered bg-white">
+          <thead class="table-light"><tr><th>Contrato</th><th>Contratada</th><th>Vigência fim</th><th>Situação</th></tr></thead>
+          <tbody id="painel-vencimentos"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TELA: CONTRATOS -->
+    <div id="tela-contratos" style="display:none">
+      <h5 class="mb-3">Contratos</h5>
+      <div class="row g-2 mb-3">
+        <div class="col-md-4"><input class="form-control form-control-sm" id="ctrBusca" placeholder="Buscar por nº, contratada ou objeto..." oninput="window.renderContratos()"></div>
+        <div class="col-md-3">
+          <select class="form-select form-select-sm" id="ctrStatus" onchange="window.renderContratos()">
+            <option value="">Todos os status</option>
+            <option value="ativo">Ativo</option>
+            <option value="encerrado">Encerrado</option>
+            <option value="rescindido">Rescindido</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-7">
+          <div class="table-responsive" style="max-height:70vh;overflow-y:auto">
+            <table class="table table-sm table-bordered bg-white align-middle">
+              <thead class="table-light"><tr><th>Contrato</th><th>Contratada</th><th>Fim</th><th>Situação</th></tr></thead>
+              <tbody id="tbody-contratos"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div id="ficha-vazia" class="text-muted p-4 text-center">Selecione um contrato à esquerda.</div>
+          <div id="ficha-contrato" style="display:none" class="card">
+            <div class="card-body">
+              <h6 id="fc-titulo" class="mb-1">—</h6>
+              <div class="text-muted small mb-2" id="fc-objeto">—</div>
+              <table class="table table-sm mb-3">
+                <tbody id="fc-dados"></tbody>
+              </table>
+              <div class="mb-2">
+                <select class="form-select form-select-sm d-inline-block w-auto" id="fcTipoEvento"></select>
+                <button class="btn btn-sm btn-primary" onclick="window.abrirEventoNoContrato()">+ Abrir evento</button>
+              </div>
+              <h6 class="small text-muted mt-3">Linha do tempo</h6>
+              <div id="fc-eventos"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- TELA: TIPOS DE EVENTO -->
     <div id="tela-tipos" style="display:none">
@@ -75,7 +136,7 @@
     </div>
 
     <!-- TELA: EVENTOS -->
-    <div id="tela-eventos">
+    <div id="tela-eventos" style="display:none">
       <h5 class="mb-3">Eventos</h5>
       <div class="row">
         <div class="col-md-4">

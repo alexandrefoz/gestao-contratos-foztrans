@@ -14,6 +14,10 @@ let eventoAtual = null;        // registro do evento selecionado
 let checklistExecAtual = [];   // linhas de checklist_exec do evento selecionado
 let anexosPorItem = {};        // { checklist_exec_id: [anexo, ...] }
 
+let contratos = [];
+let contratoSelecionadoId = null;
+let config = {};               // chave -> valor (DIAS_LARANJA, DIAS_AMARELO, etc.)
+
 // ---------------------------------------------------------------- auth
 async function entrar() {
   const email = document.getElementById('loginEmail').value.trim();
@@ -75,17 +79,48 @@ async function aoLogar() {
   document.getElementById('tela-login').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('userEmail').textContent = user.email;
+  await carregarConfig();
   await carregarTiposEvento();
   await carregarEventos();
-  irPara('eventos');
+  await carregarContratos();
+  irPara('painel');
 }
 
 // ------------------------------------------------------------ navegação
 function irPara(tela) {
+  document.getElementById('tela-painel').style.display = tela === 'painel' ? 'block' : 'none';
+  document.getElementById('tela-contratos').style.display = tela === 'contratos' ? 'block' : 'none';
   document.getElementById('tela-eventos').style.display = tela === 'eventos' ? 'block' : 'none';
   document.getElementById('tela-tipos').style.display = tela === 'tipos' ? 'block' : 'none';
   document.getElementById('tela-checklists').style.display = tela === 'checklists' ? 'block' : 'none';
   document.querySelectorAll('#sidebar a').forEach(a => a.classList.toggle('active', a.dataset.tela === tela));
+  if (tela === 'painel') renderPainel();
+}
+
+// ------------------------------------------------------------- config
+async function carregarConfig() {
+  const { data, error } = await supabase.from('config').select('*');
+  if (error) { console.warn('Erro ao carregar config:', error.message); return; }
+  config = {};
+  (data || []).forEach(c => { config[c.chave] = c.valor; });
+}
+
+function diasRestantes(dataFim) {
+  if (!dataFim) return null;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const fim = new Date(dataFim + 'T00:00:00');
+  return Math.round((fim - hoje) / 86400000);
+}
+
+function statusVigencia(dataFim) {
+  const d = diasRestantes(dataFim);
+  if (d === null) return { texto: 'sem data', cor: 'secondary', dias: null };
+  const laranja = Number(config.DIAS_LARANJA ?? 30);
+  const amarelo = Number(config.DIAS_AMARELO ?? 90);
+  if (d < 0) return { texto: `vencido há ${Math.abs(d)}d`, cor: 'danger', dias: d };
+  if (d <= laranja) return { texto: `${d}d restantes`, cor: 'warning', dias: d, textoCor: '#000' };
+  if (d <= amarelo) return { texto: `${d}d restantes`, cor: 'info', dias: d };
+  return { texto: `${d}d restantes`, cor: 'success', dias: d };
 }
 
 // --------------------------------------------------------- tipos_evento
@@ -261,6 +296,170 @@ async function excluirEtapa() {
   if (error) { alert('Erro ao excluir: ' + error.message); return; }
   fecharModalEtapa();
   await carregarChecklist(tipoSelecionadoId);
+}
+
+// ------------------------------------------------------------ contratos
+async function carregarContratos() {
+  const { data, error } = await supabase
+    .from('contratos')
+    .select('*')
+    .order('vigencia_fim', { ascending: true, nullsFirst: false });
+  if (error) { alert('Erro ao carregar contratos: ' + error.message); return; }
+  contratos = data || [];
+  renderContratos();
+}
+
+function renderContratos() {
+  const busca = (document.getElementById('ctrBusca')?.value || '').toLowerCase();
+  const statusFiltro = document.getElementById('ctrStatus')?.value || '';
+  const filtrados = contratos.filter(c => {
+    if (statusFiltro && c.status !== statusFiltro) return false;
+    if (!busca) return true;
+    const alvo = `${c.numero_ano} ${c.contratada} ${c.objeto}`.toLowerCase();
+    return alvo.includes(busca);
+  });
+  const tbody = document.getElementById('tbody-contratos');
+  if (!tbody) return;
+  tbody.innerHTML = filtrados.map(c => {
+    const sv = statusVigencia(c.vigencia_fim);
+    return `<tr style="cursor:pointer" onclick="window.selecionarContrato('${c.id}')">
+      <td>${esc(c.numero_ano)}</td>
+      <td class="small">${esc(c.contratada)}</td>
+      <td class="small">${c.vigencia_fim ? formatarDataISO(c.vigencia_fim) : '—'}</td>
+      <td><span class="badge text-bg-${sv.cor}">${sv.texto}</span></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="text-muted text-center py-3">Nenhum contrato encontrado.</td></tr>';
+}
+
+async function selecionarContrato(id) {
+  contratoSelecionadoId = id;
+  const c = contratos.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('ficha-vazia').style.display = 'none';
+  document.getElementById('ficha-contrato').style.display = 'block';
+  document.getElementById('fc-titulo').textContent = `${c.numero_ano} — ${c.contratada}`;
+  document.getElementById('fc-objeto').textContent = c.objeto || '';
+  const sv = statusVigencia(c.vigencia_fim);
+  document.getElementById('fc-dados').innerHTML = `
+    <tr><th class="small">Regime legal</th><td class="small">${esc(mapaRegime(c.regime_legal))}</td></tr>
+    <tr><th class="small">Vigência</th><td class="small">${c.vigencia_inicio ? formatarDataISO(c.vigencia_inicio) : '—'} a ${c.vigencia_fim ? formatarDataISO(c.vigencia_fim) : '—'} <span class="badge text-bg-${sv.cor}">${sv.texto}</span></td></tr>
+    <tr><th class="small">Valor global</th><td class="small">${formatarMoeda(c.valor_global)}</td></tr>
+    <tr><th class="small">Valor mensal</th><td class="small">${c.valor_mensal ? formatarMoeda(c.valor_mensal) : '—'}</td></tr>
+    <tr><th class="small">Fiscal</th><td class="small">${esc(c.fiscal_tecnico_nome || '—')}</td></tr>
+    <tr><th class="small">Gestor</th><td class="small">${esc(c.gestor_nome || '—')}</td></tr>
+  `;
+  popularSelectTiposEvento();
+
+  const { data, error } = await supabase
+    .from('eventos')
+    .select('*, tipos_evento(rotulo)')
+    .eq('contrato_id', id)
+    .order('data_abertura', { ascending: false });
+  if (error) { document.getElementById('fc-eventos').textContent = 'Erro: ' + error.message; return; }
+  document.getElementById('fc-eventos').innerHTML = (data || []).map(e => `
+    <div class="small border-bottom py-1">
+      <a href="#" onclick="window.irParaEvento('${e.id}');return false">${esc(e.tipos_evento?.rotulo || '—')}</a>
+      — ${e.data_abertura} — <span class="badge text-bg-light text-dark border">${esc(e.status)}</span>
+    </div>
+  `).join('') || '<div class="text-muted small">Nenhum evento ainda neste contrato.</div>';
+}
+
+function popularSelectTiposEvento() {
+  const sel = document.getElementById('fcTipoEvento');
+  if (!sel) return;
+  sel.innerHTML = tiposEvento.map(t => `<option value="${t.id}">${esc(t.rotulo)}</option>`).join('');
+}
+
+async function abrirEventoNoContrato() {
+  const tipoId = document.getElementById('fcTipoEvento').value;
+  if (!contratoSelecionadoId || !tipoId) return;
+  const { data: userData } = await supabase.auth.getUser();
+  const { data, error } = await supabase.rpc('abrir_evento', {
+    p_contrato_id: contratoSelecionadoId,
+    p_tipo_evento_id: tipoId,
+    p_processo_adm_id: null,
+    p_data_limite: null,
+    p_responsavel_email: userData?.user?.email || null
+  });
+  if (error) { alert('Erro ao abrir evento: ' + error.message); return; }
+  await carregarEventos();
+  irPara('eventos');
+  await selecionarEvento(data);
+}
+
+async function irParaEvento(eventoId) {
+  await carregarEventos();
+  irPara('eventos');
+  await selecionarEvento(eventoId);
+}
+
+function mapaRegime(r) {
+  if (r === 'lei_14133_2021') return 'Lei 14.133/2021';
+  if (r === 'lei_8666_1993') return 'Lei 8.666/1993';
+  return '[A CONFIRMAR]';
+}
+function formatarDataISO(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function formatarMoeda(v) {
+  if (v === null || v === undefined) return '—';
+  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+// -------------------------------------------------------------- painel
+async function renderPainel() {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const laranja = Number(config.DIAS_LARANJA ?? 30);
+  const amarelo = Number(config.DIAS_AMARELO ?? 90);
+
+  const ativos = contratos.filter(c => c.status === 'ativo' && c.ativo);
+  const criticos = ativos.filter(c => { const d = diasRestantes(c.vigencia_fim); return d !== null && d <= laranja; });
+  const atencao = ativos.filter(c => { const d = diasRestantes(c.vigencia_fim); return d !== null && d > laranja && d <= amarelo; });
+  const eventosAbertos = eventos.filter(e => e.status === 'aberto' || e.status === 'em_andamento');
+
+  const { data: atrasadas, error: eAtr } = await supabase
+    .from('checklist_exec')
+    .select('*, eventos(id, contratos(numero_ano, contratada), tipos_evento(rotulo))')
+    .lt('prazo_previsto', hoje.toISOString().slice(0, 10))
+    .in('status', ['pendente', 'em_andamento']);
+  if (eAtr) console.warn('Erro ao buscar etapas atrasadas:', eAtr.message);
+
+  document.getElementById('painel-cards').innerHTML = [
+    ['Contratos ativos', ativos.length, 'primary'],
+    [`Vencendo em até ${laranja}d`, criticos.length, 'danger'],
+    [`Vencendo em até ${amarelo}d`, atencao.length, 'warning'],
+    ['Eventos em andamento', eventosAbertos.length, 'info'],
+    ['Etapas atrasadas', (atrasadas || []).length, 'dark']
+  ].map(([titulo, valor, cor]) => `
+    <div class="col">
+      <div class="card border-${cor}">
+        <div class="card-body py-2 text-center">
+          <div class="fs-4 fw-bold text-${cor}">${valor}</div>
+          <div class="small text-muted">${titulo}</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  const provid = [];
+  (atrasadas || []).forEach(a => {
+    provid.push(`<div class="alert alert-danger py-2 small mb-1">
+      Etapa atrasada: <b>${esc(a.etapa)}</b> — ${esc(a.eventos?.contratos?.numero_ano || '—')}
+      (${esc(a.eventos?.tipos_evento?.rotulo || '—')}) — prazo era ${formatarDataISO(a.prazo_previsto)}
+    </div>`);
+  });
+  eventosAbertos.filter(e => !e.responsavel_email).forEach(e => {
+    provid.push(`<div class="alert alert-warning py-2 small mb-1">Evento sem responsável definido (ID ${e.id.slice(0, 8)})</div>`);
+  });
+  document.getElementById('painel-providencias').innerHTML = provid.join('') || '<div class="text-muted small">Nenhuma providência pendente no momento.</div>';
+
+  const comData = contratos.filter(c => c.status === 'ativo' && c.vigencia_fim).slice(0, 15);
+  document.getElementById('painel-vencimentos').innerHTML = comData.map(c => {
+    const sv = statusVigencia(c.vigencia_fim);
+    return `<tr><td>${esc(c.numero_ano)}</td><td class="small">${esc(c.contratada)}</td><td class="small">${formatarDataISO(c.vigencia_fim)}</td><td><span class="badge text-bg-${sv.cor}">${sv.texto}</span></td></tr>`;
+  }).join('') || '<tr><td colspan="4" class="text-muted text-center py-3">Nenhum contrato ativo com data de vigência.</td></tr>';
 }
 
 // ------------------------------------------------------------- eventos
@@ -611,6 +810,11 @@ window.enviarAnexos = enviarAnexos;
 window.baixarAnexo = baixarAnexo;
 window.excluirAnexo = excluirAnexo;
 window.gerarDossie = gerarDossie;
+window.carregarContratos = carregarContratos;
+window.renderContratos = renderContratos;
+window.selecionarContrato = selecionarContrato;
+window.abrirEventoNoContrato = abrirEventoNoContrato;
+window.irParaEvento = irParaEvento;
 
 // -------------------------------------------------------------- bootstrap
 supabase.auth.getSession().then(({ data: { session } }) => {
