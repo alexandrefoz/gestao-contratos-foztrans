@@ -503,7 +503,7 @@ function renderPainelVencimentos() {
 async function carregarEventos() {
   const { data, error } = await supabase
     .from('eventos')
-    .select('*, contratos(numero_ano, contratada, objeto), tipos_evento(rotulo)')
+    .select('*, contratos(numero_ano, contratada, objeto, valor_global, valor_mensal, data_base_reajuste, indice_reajuste), tipos_evento(rotulo, tipo)')
     .order('data_abertura', { ascending: false })
     .limit(50);
   if (error) { alert('Erro ao carregar eventos: ' + error.message); return; }
@@ -533,6 +533,20 @@ async function selecionarEvento(id) {
     `${eventoAtual.contratos?.numero_ano || '—'} — ${eventoAtual.tipos_evento?.rotulo || '—'}`;
   document.getElementById('ev-subtitulo').textContent =
     `${eventoAtual.contratos?.contratada || '—'} · ${eventoAtual.contratos?.objeto || ''}`;
+
+  const cardReajuste = document.getElementById('cardReajuste');
+  if (eventoAtual.tipos_evento?.tipo === 'reajuste') {
+    cardReajuste.style.display = 'block';
+    document.getElementById('reajusteResultado').innerHTML = '';
+    const c = eventoAtual.contratos || {};
+    document.getElementById('reajusteDataBase').value = c.data_base_reajuste || '';
+    document.getElementById('reajusteDataRef').value = new Date().toISOString().slice(0, 10);
+    if (c.indice_reajuste && ['IPCA', 'INPC', 'IGPM'].includes(c.indice_reajuste.toUpperCase())) {
+      document.getElementById('reajusteIndice').value = c.indice_reajuste.toUpperCase();
+    }
+  } else {
+    cardReajuste.style.display = 'none';
+  }
 
   const { data, error } = await supabase
     .from('checklist_exec')
@@ -611,6 +625,75 @@ function renderChecklistExec() {
     </div>
   `;
   }).join('') || '<div class="text-muted">Este evento não tem etapas no checklist.</div>';
+}
+
+// -------------------------------------------------------------- reajuste
+let memoriaReajusteAtual = null;
+
+async function calcularReajuste() {
+  const dataBase = document.getElementById('reajusteDataBase').value;
+  const dataRef = document.getElementById('reajusteDataRef').value;
+  const serie = document.getElementById('reajusteIndice').value;
+  const out = document.getElementById('reajusteResultado');
+  if (!dataBase || !dataRef) {
+    out.innerHTML = '<div class="alert alert-warning py-2 small mb-0">Preencha data-base e data de referência.</div>';
+    return;
+  }
+  if (dataBase >= dataRef) {
+    out.innerHTML = '<div class="alert alert-warning py-2 small mb-0">Data-base precisa ser anterior à data de referência.</div>';
+    return;
+  }
+
+  const { data, error } = await supabase.rpc('calcular_memoria_reajuste', {
+    p_serie: serie, p_data_base: dataBase, p_data_referencia: dataRef
+  });
+  if (error) { out.innerHTML = `<div class="alert alert-danger py-2 small mb-0">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data || !data.length) {
+    out.innerHTML = '<div class="alert alert-warning py-2 small mb-0">Nenhum índice carregado nesse período. Rode a atualização de índices (Apps Script) e tente de novo.</div>';
+    memoriaReajusteAtual = null;
+    return;
+  }
+
+  const fatorFinal = Number(data[data.length - 1].fator_acumulado);
+  const c = eventoAtual.contratos || {};
+  const base = Number(c.valor_mensal ?? c.valor_global ?? 0);
+  const valorNovo = base * fatorFinal;
+  memoriaReajusteAtual = { serie, dataBase, dataRef, fatorFinal, base, valorNovo };
+
+  out.innerHTML = `
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-bordered mb-0">
+        <thead class="table-light"><tr><th>Competência</th><th>${esc(serie)} (%)</th><th>Fator acumulado</th></tr></thead>
+        <tbody>
+          ${data.map(m => `<tr><td>${m.competencia.slice(0, 7)}</td><td>${Number(m.indice_mensal).toFixed(2)}</td><td>${Number(m.fator_acumulado).toFixed(6)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="small mb-2">
+      Fator acumulado final: <b>${fatorFinal.toFixed(6)}</b>
+      (${((fatorFinal - 1) * 100).toFixed(2)}%)<br>
+      Valor atual: ${formatarMoeda(base)} → Valor com reajuste: <b>${formatarMoeda(valorNovo)}</b>
+    </div>
+    <div class="alert alert-info py-2 small mb-2">Memória de cálculo apenas calculada — nada foi gravado ainda. Confira os números antes de aplicar.</div>
+    <button class="btn btn-sm btn-success" onclick="window.aplicarReajuste()">✔ Aplicar no evento</button>
+  `;
+}
+
+async function aplicarReajuste() {
+  if (!memoriaReajusteAtual || !eventoAtual) return;
+  const { base, valorNovo, serie, dataRef } = memoriaReajusteAtual;
+  const { error } = await supabase
+    .from('eventos')
+    .update({
+      valor_anterior: base,
+      valor_novo: valorNovo,
+      indice_periodo: `${serie} até ${dataRef}`
+    })
+    .eq('id', eventoAtual.id);
+  if (error) { alert('Erro ao aplicar reajuste no evento: ' + error.message); return; }
+  alert('Reajuste aplicado ao evento (valor_anterior/valor_novo/indice_periodo). Lembre de seguir o checklist para formalizar o ato.');
+  await carregarEventos();
+  await selecionarEvento(eventoAtual.id);
 }
 
 async function atualizarCampoExec(id, campo, valor) {
@@ -842,6 +925,8 @@ window.salvarEtapa = salvarEtapa;
 window.excluirEtapa = excluirEtapa;
 window.carregarEventos = carregarEventos;
 window.selecionarEvento = selecionarEvento;
+window.calcularReajuste = calcularReajuste;
+window.aplicarReajuste = aplicarReajuste;
 window.atualizarCampoExec = atualizarCampoExec;
 window.enviarAnexos = enviarAnexos;
 window.baixarAnexo = baixarAnexo;

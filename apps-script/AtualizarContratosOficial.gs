@@ -89,31 +89,57 @@ function aplicarCorrecoesOficiais() {
   });
 
   // Contratos que existem no oficial mas não estavam na planilha.
+  // Idempotente: só adiciona se (ATO, Nº, ANO) ainda não existir — rodar o
+  // script de novo não duplica linha.
+  function _jaExiste(ato, numero, ano) {
+    for (var r = 1; r < dados.length; r++) {
+      if (String(dados[r][colAto] || '').trim().toLowerCase() === ato.toLowerCase() &&
+          String(dados[r][colNo] || '').trim() === numero &&
+          String(dados[r][colAno] || '').trim() === ano) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   var cabecalhoCompleto = cabecalhos.length;
-  var linhaFaficpa = new Array(cabecalhoCompleto).fill('');
-  linhaFaficpa[colAto] = 'Contrato'; linhaFaficpa[colNo] = '7'; linhaFaficpa[colAno] = '2026';
-  linhaFaficpa[idx['OPCONTRATADA']] = 'FUNDACAO DE APOIO AO CAMPUS DE PARANAVAI - FAFIPA';
-  linhaFaficpa[idx['OBJETO RESUMIDO']] = 'Concurso público para provimento de vagas e cadastro de reserva.';
-  linhaFaficpa[idx['Valor Global']] = 'R$ 89.900,00';
-  linhaFaficpa[colInicio] = '23/09/2026'; linhaFaficpa[colFim] = '22/09/2028';
+  var linhasNovas = [];
 
-  var linhaLeiloeiro = new Array(cabecalhoCompleto).fill('');
-  linhaLeiloeiro[colAto] = 'Contrato'; linhaLeiloeiro[colNo] = '8'; linhaLeiloeiro[colAno] = '2026';
-  linhaLeiloeiro[idx['OPCONTRATADA']] = 'LUCIANO MARANGONI';
-  linhaLeiloeiro[idx['OBJETO RESUMIDO']] = 'LEILOEIRO';
-  linhaLeiloeiro[idx['Valor Global']] = 'não gera despesa';
-  linhaLeiloeiro[colInicio] = '05/11/2026'; linhaLeiloeiro[colFim] = '05/11/2027';
+  if (!_jaExiste('Contrato', '7', '2026')) {
+    var linhaFaficpa = new Array(cabecalhoCompleto).fill('');
+    linhaFaficpa[colAto] = 'Contrato'; linhaFaficpa[colNo] = '7'; linhaFaficpa[colAno] = '2026';
+    linhaFaficpa[idx['OPCONTRATADA']] = 'FUNDACAO DE APOIO AO CAMPUS DE PARANAVAI - FAFIPA';
+    linhaFaficpa[idx['OBJETO RESUMIDO']] = 'Concurso público para provimento de vagas e cadastro de reserva.';
+    linhaFaficpa[idx['Valor Global']] = 'R$ 89.900,00';
+    linhaFaficpa[colInicio] = '23/09/2026'; linhaFaficpa[colFim] = '22/09/2028';
+    linhasNovas.push(linhaFaficpa);
+    relatorio.push('+ Adicionado: Contrato 7/2026 FAFIPA (fiscal/gestor em branco — preencher manualmente)');
+  } else {
+    relatorio.push('= Já existia: Contrato 7/2026 FAFIPA (nada adicionado)');
+  }
 
-  var proximaLinha = sh.getLastRow() + 1;
-  sh.getRange(proximaLinha, 1, 1, cabecalhoCompleto).setValues([linhaFaficpa]);
-  sh.getRange(proximaLinha + 1, 1, 1, cabecalhoCompleto).setValues([linhaLeiloeiro]);
-  relatorio.push('+ Adicionado: Contrato 7/2026 FAFIPA (fiscal/gestor em branco — preencher manualmente)');
-  relatorio.push('+ Adicionado: Contrato 8/2026 Luciano Marangoni, leiloeiro (fiscal/gestor em branco — preencher manualmente)');
+  if (!_jaExiste('Contrato', '8', '2026')) {
+    var linhaLeiloeiro = new Array(cabecalhoCompleto).fill('');
+    linhaLeiloeiro[colAto] = 'Contrato'; linhaLeiloeiro[colNo] = '8'; linhaLeiloeiro[colAno] = '2026';
+    linhaLeiloeiro[idx['OPCONTRATADA']] = 'LUCIANO MARANGONI';
+    linhaLeiloeiro[idx['OBJETO RESUMIDO']] = 'LEILOEIRO';
+    linhaLeiloeiro[idx['Valor Global']] = 'não gera despesa';
+    linhaLeiloeiro[colInicio] = '05/11/2026'; linhaLeiloeiro[colFim] = '05/11/2027';
+    linhasNovas.push(linhaLeiloeiro);
+    relatorio.push('+ Adicionado: Contrato 8/2026 Luciano Marangoni, leiloeiro (fiscal/gestor em branco — preencher manualmente)');
+  } else {
+    relatorio.push('= Já existia: Contrato 8/2026 Luciano Marangoni (nada adicionado)');
+  }
+
+  if (linhasNovas.length) {
+    var proximaLinha = sh.getLastRow() + 1;
+    sh.getRange(proximaLinha, 1, linhasNovas.length, cabecalhoCompleto).setValues(linhasNovas);
+  }
 
   _escreverRelatorioCorrecoes(relatorio);
   ui.alert(
     'Correções aplicadas: ' + correcoes.length + ' campos de data atualizados, ' +
-    '2 contratos novos adicionados.\n\nVeja a aba "Correcoes_Aplicadas" para o detalhe.\n\n' +
+    linhasNovas.length + ' contrato(s) novo(s) adicionado(s).\n\nVeja a aba "Correcoes_Aplicadas" para o detalhe.\n\n' +
     'Pendente (não alterado, decidir depois):\n' +
     '- Moving Tech (valor 30x diferente)\n' +
     '- Contrato 1/2025 (nome do contratado diferente)\n' +

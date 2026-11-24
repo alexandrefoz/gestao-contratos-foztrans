@@ -161,6 +161,35 @@
               </div>
             </div>
             <div id="dossieAviso" class="alert alert-warning py-2 small" style="display:none"></div>
+
+            <div id="cardReajuste" class="card mb-3" style="display:none">
+              <div class="card-body">
+                <h6 class="card-title mb-2">📈 Cálculo de reajuste</h6>
+                <div class="row g-2 align-items-end mb-2">
+                  <div class="col-auto">
+                    <label class="form-label small mb-0">Data-base</label>
+                    <input type="date" id="reajusteDataBase" class="form-control form-control-sm">
+                  </div>
+                  <div class="col-auto">
+                    <label class="form-label small mb-0">Data de referência</label>
+                    <input type="date" id="reajusteDataRef" class="form-control form-control-sm">
+                  </div>
+                  <div class="col-auto">
+                    <label class="form-label small mb-0">Índice</label>
+                    <select id="reajusteIndice" class="form-select form-select-sm">
+                      <option value="IPCA">IPCA</option>
+                      <option value="INPC">INPC</option>
+                      <option value="IGPM">IGP-M</option>
+                    </select>
+                  </div>
+                  <div class="col-auto">
+                    <button class="btn btn-sm btn-primary" onclick="window.calcularReajuste()">Calcular</button>
+                  </div>
+                </div>
+                <div id="reajusteResultado"></div>
+              </div>
+            </div>
+
             <div id="lista-checklist-exec"></div>
           </div>
         </div>
