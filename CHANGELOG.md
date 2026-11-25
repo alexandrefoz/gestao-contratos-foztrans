@@ -1,5 +1,13 @@
 # Changelog
 
+## 25/11/2026 — Certidões migradas pro Supabase (cadastro manual, sem OCR por enquanto)
+
+- Decisão do usuário: puxar certidões/TRD pro Supabase (reverte a decisão anterior de só linkar o sistema Apps Script). Começando por certidões — é o bloqueio real pra depois migrar TRP/TRD também.
+- Tabela `certidoes_contrato` (tipo, numero, data_validade, caminho_storage) + bucket `certidoes-contrato` (privado, políticas RLS por perfil/e-mail do fiscal-gestor, mesmo padrão de `anexos-eventos`, mas chaveado por `contrato_id`).
+- **Sem OCR por enquanto** — usuário optou por cadastro manual (tipo fixo, número, validade digitados; upload do PDF só guarda o arquivo). Status (válida/vencida) calculado no front-end a partir da validade, reaproveitando `statusVigencia()` já usado pra vigência de contrato.
+- Nova seção "Certidões de regularidade" na ficha do contrato, com os 6 tipos fixos (FGTS, CNDT, PGFN, Estadual, Municipal, Declaração art. 7º XXXIII).
+- Link direto pro sistema antigo ("📄 TRP/TRD e certidões") virou só "📄 TRP/TRD" — certidões já não dependem mais de lá.
+
 ## 24/11/2026 (continuação) — Fundamentação de prorrogação e repactuação validada
 
 - Lidos arquivos .docx reais (sem poppler/pandoc disponíveis neste ambiente — extraído via script Python de `word/document.xml`): Parecer Técnico de Prorrogação Parcial (Dataprom, Contrato 004/2025) e Minuta do 1º Apostilamento de Repactuação (Liderança, Processo 62.368/2024).

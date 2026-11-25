@@ -363,6 +363,95 @@ async function selecionarContrato(id) {
       — ${e.data_abertura} — <span class="badge text-bg-light text-dark border">${esc(e.status)}</span>
     </div>
   `).join('') || '<div class="text-muted small">Nenhum evento ainda neste contrato.</div>';
+
+  await carregarCertidoes(id);
+}
+
+// -------------------------------------------------------------- certidões
+const TIPOS_CERTIDAO = [
+  ['FGTS', 'FGTS (CRF)'],
+  ['CNDT', 'CNDT (Trabalhista)'],
+  ['PGFN', 'Receita Federal/PGFN'],
+  ['ESTADUAL', 'Fazenda Estadual'],
+  ['MUNICIPAL', 'Fazenda Municipal'],
+  ['DECLARACAO_MENOR', 'Declaração art. 7º, XXXIII'],
+];
+const BUCKET_CERTIDOES = 'certidoes-contrato';
+let certidoesPorTipo = {};
+
+async function carregarCertidoes(contratoId) {
+  const { data, error } = await supabase
+    .from('certidoes_contrato')
+    .select('*')
+    .eq('contrato_id', contratoId);
+  if (error) { document.getElementById('tbody-certidoes').innerHTML = `<tr><td colspan="5">Erro: ${esc(error.message)}</td></tr>`; return; }
+  certidoesPorTipo = {};
+  (data || []).forEach(c => { certidoesPorTipo[c.tipo] = c; });
+  renderCertidoes();
+}
+
+function renderCertidoes() {
+  const el = document.getElementById('tbody-certidoes');
+  el.innerHTML = TIPOS_CERTIDAO.map(([tipo, rotulo]) => {
+    const c = certidoesPorTipo[tipo];
+    const sv = c?.data_validade ? statusVigencia(c.data_validade) : { texto: 'sem certidão', cor: 'secondary' };
+    return `
+    <tr>
+      <td class="small">${esc(rotulo)}</td>
+      <td><span class="badge text-bg-${sv.cor}">${sv.texto}</span></td>
+      <td><input class="form-control form-control-sm" style="width:110px" value="${esc(c?.numero || '')}"
+        onblur="window.salvarCertidao('${tipo}','numero',this.value)"></td>
+      <td><input type="date" class="form-control form-control-sm" style="width:140px" value="${c?.data_validade || ''}"
+        onchange="window.salvarCertidao('${tipo}','data_validade',this.value || null)"></td>
+      <td class="small">
+        ${c?.caminho_storage
+          ? `📎 <a href="#" onclick="window.baixarCertidao('${tipo}');return false">${esc(c.nome_arquivo || 'arquivo')}</a>
+             <a href="#" class="text-danger ms-1" onclick="window.excluirArquivoCertidao('${tipo}');return false">✕</a>`
+          : `<input type="file" class="form-control form-control-sm" accept="application/pdf" style="width:160px" onchange="window.enviarCertidaoArquivo('${tipo}', this.files[0])">`}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function salvarCertidao(tipo, campo, valor) {
+  if (!contratoSelecionadoId) return;
+  const existente = certidoesPorTipo[tipo];
+  const payload = { contrato_id: contratoSelecionadoId, tipo, [campo]: valor };
+  const { data, error } = await supabase
+    .from('certidoes_contrato')
+    .upsert(existente ? { ...existente, [campo]: valor } : payload, { onConflict: 'contrato_id,tipo' })
+    .select()
+    .single();
+  if (error) { alert('Erro ao salvar certidão: ' + error.message); return; }
+  certidoesPorTipo[tipo] = data;
+  renderCertidoes();
+}
+
+async function enviarCertidaoArquivo(tipo, file) {
+  if (!file || !contratoSelecionadoId) return;
+  const caminho = `${contratoSelecionadoId}/${tipo}.pdf`;
+  const { error: eUpload } = await supabase.storage.from(BUCKET_CERTIDOES).upload(caminho, file, { upsert: true });
+  if (eUpload) { alert('Erro ao enviar arquivo: ' + eUpload.message); return; }
+  await salvarCertidao(tipo, 'caminho_storage', caminho);
+  await salvarCertidao(tipo, 'nome_arquivo', file.name);
+}
+
+async function baixarCertidao(tipo) {
+  const c = certidoesPorTipo[tipo];
+  if (!c?.caminho_storage) return;
+  const { data, error } = await supabase.storage.from(BUCKET_CERTIDOES).createSignedUrl(c.caminho_storage, 60);
+  if (error) { alert('Erro ao gerar link: ' + error.message); return; }
+  window.open(data.signedUrl, '_blank');
+}
+
+async function excluirArquivoCertidao(tipo) {
+  const c = certidoesPorTipo[tipo];
+  if (!c?.caminho_storage) return;
+  if (!confirm('Excluir o arquivo desta certidão?')) return;
+  const { error } = await supabase.storage.from(BUCKET_CERTIDOES).remove([c.caminho_storage]);
+  if (error) { alert('Erro ao excluir: ' + error.message); return; }
+  await salvarCertidao(tipo, 'caminho_storage', null);
+  await salvarCertidao(tipo, 'nome_arquivo', null);
 }
 
 function popularSelectTiposEvento() {
@@ -1168,6 +1257,10 @@ window.gerarDossie = gerarDossie;
 window.carregarContratos = carregarContratos;
 window.renderContratos = renderContratos;
 window.selecionarContrato = selecionarContrato;
+window.salvarCertidao = salvarCertidao;
+window.enviarCertidaoArquivo = enviarCertidaoArquivo;
+window.baixarCertidao = baixarCertidao;
+window.excluirArquivoCertidao = excluirArquivoCertidao;
 window.abrirEventoNoContrato = abrirEventoNoContrato;
 window.irParaEvento = irParaEvento;
 window.filtrarPainel = filtrarPainel;
