@@ -503,7 +503,7 @@ function renderPainelVencimentos() {
 async function carregarEventos() {
   const { data, error } = await supabase
     .from('eventos')
-    .select('*, contratos(numero_ano, contratada, objeto, cnpj, valor_global, valor_mensal, data_base_reajuste, indice_reajuste), tipos_evento(rotulo, tipo)')
+    .select('*, contratos(numero_ano, contratada, objeto, cnpj, valor_global, valor_mensal, data_base_reajuste, indice_reajuste, regime_legal), tipos_evento(rotulo, tipo)')
     .order('data_abertura', { ascending: false })
     .limit(50);
   if (error) { alert('Erro ao carregar eventos: ' + error.message); return; }
@@ -634,6 +634,27 @@ function renderChecklistExec() {
 // não inventa artigo/decreto que não foi conferido.
 const JUSTIFICATIVA_POR_TIPO = {
   reajuste: (c) => `O Contrato nº ${c.numero_ano || '[CONTRATO]'}, firmado com a empresa ${c.contratada || '[CONTRATADA]'}, atingiu o interregno mínimo de 12 (doze) meses desde a última data-base, ensejando o reajuste dos valores contratados.\n\nA concessão de ofício é competência do gestor do contrato, nos termos do Decreto Municipal nº 32.398/2024 (art. 290 e art. 303, inciso X).\n\nA adoção proativa dessa medida preserva o equilíbrio econômico-financeiro da avença e afasta o risco de futuros pedidos de reequilíbrio por defasagem inflacionária acumulada.`,
+
+  // Validado contra processo real (Dataprom, Parecer Técnico de Prorrogação
+  // Parcial, Contrato 004/2025) — fundamento varia pelo regime legal do
+  // contrato, por isso ramifica em c.regime_legal.
+  prorrogacao: (c) => {
+    if (c.regime_legal === 'lei_14133_2021') {
+      return `O Contrato nº ${c.numero_ano || '[CONTRATO]'}, firmado com a empresa ${c.contratada || '[CONTRATADA]'}, tem por objeto ${c.objeto || '[OBJETO]'}, caracterizando-se como serviço/fornecimento contínuo nos termos do art. 6º, inciso XV, da Lei nº 14.133/2021.\n\nNos termos do art. 107 da Lei nº 14.133/2021, os contratos de serviços e fornecimentos contínuos poderão ser prorrogados sucessivamente, respeitada a vigência máxima decenal, desde que a autoridade competente ateste que as condições e os preços permanecem vantajosos para a Administração.\n\n[Confirmar aqui a vantajosidade de preços atual e, se a contratação original foi por inexigibilidade/dispensa, a persistência da condição que a motivou.]`;
+    }
+    if (c.regime_legal === 'lei_8666_1993') {
+      return `O Contrato nº ${c.numero_ano || '[CONTRATO]'}, firmado com a empresa ${c.contratada || '[CONTRATADA]'}, tem por objeto ${c.objeto || '[OBJETO]'}, caracterizando-se como serviço contínuo.\n\nNos termos do art. 57, inciso II, da Lei nº 8.666/1993, os contratos de serviços a serem executados de forma contínua poderão ter a sua duração prorrogada por iguais e sucessivos períodos, com vistas à obtenção de preços e condições mais vantajosas para a Administração, limitada a sessenta meses.\n\n[Conferir a cláusula específica do contrato que lista os requisitos para prorrogação — costuma reproduzir os critérios do TCU (ex.: preços e condições vantajosos, interesse da Administração, previsão em edital).]`;
+    }
+    return `O Contrato nº ${c.numero_ano || '[CONTRATO]'}, firmado com a empresa ${c.contratada || '[CONTRATADA]'}, tem por objeto ${c.objeto || '[OBJETO]'}.\n\n[Regime legal do contrato não identificado no cadastro — confirmar se é Lei 14.133/2021 (art. 107) ou Lei 8.666/1993 (art. 57, II) antes de prosseguir, o fundamento muda conforme o caso.]`;
+  },
+
+  // Validado contra processo real (Liderança, 1º Apostilamento, Processo
+  // 62.368/2024) — repactuação é CCT-driven, com retroatividade à data de
+  // início de execução do contrato. O valor em si (percentual salarial,
+  // auxílios) depende do acordo/convenção coletiva vigente — não é
+  // calculado automaticamente (módulo de cálculo retroativo ainda não
+  // construído), só a fundamentação legal.
+  repactuacao: (c) => `O Contrato nº ${c.numero_ano || '[CONTRATO]'}, firmado com a empresa ${c.contratada || '[CONTRATADA]'}, é executado com regime de dedicação exclusiva de mão de obra, sujeito à repactuação nos termos do art. 6º, inciso LIX, da Lei nº 14.133/2021.\n\nA repactuação decorre de nova Convenção/Acordo Coletivo de Trabalho da categoria, com efeitos retroativos à data de início da execução do contrato (ou à data-base anterior, conforme o caso).\n\n[Confirmar: número e data da CCT/ACT aplicável, percentual de reajuste salarial e valores de benefícios (ex.: auxílio alimentação) pactuados, e a data-base/retroatividade correta para este contrato — não calculado automaticamente, módulo de cálculo retroativo de repactuação ainda não construído.]`,
 };
 const FINALIDADE_POR_TIPO = {
   reajuste: 'o processamento de reajuste contratual',

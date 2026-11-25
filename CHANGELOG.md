@@ -1,5 +1,12 @@
 # Changelog
 
+## 24/11/2026 (continuação) — Fundamentação de prorrogação e repactuação validada
+
+- Lidos arquivos .docx reais (sem poppler/pandoc disponíveis neste ambiente — extraído via script Python de `word/document.xml`): Parecer Técnico de Prorrogação Parcial (Dataprom, Contrato 004/2025) e Minuta do 1º Apostilamento de Repactuação (Liderança, Processo 62.368/2024).
+- `JUSTIFICATIVA_POR_TIPO.prorrogacao`: ramifica por `regime_legal` do contrato — Lei 14.133/2021 cita art. 107 (serviços/fornecimentos contínuos, vigência máxima decenal); Lei 8.666/1993 cita art. 57, II (até 60 meses). Antes era placeholder genérico para todos os tipos não-reajuste.
+- `JUSTIFICATIVA_POR_TIPO.repactuacao`: fundamento real é art. 6º, inciso LIX da Lei 14.133/2021 + CCT/ACT da categoria, com retroatividade à data de início de execução — mas o **valor em si não é calculado** (módulo de retroativo de repactuação continua não construído), só a fundamentação legal entra no texto.
+- `termo_apostilamento` continua só para reajuste — repactuação usa cálculo CCT-based incompatível com o motor de índice (IPCA/INPC/IGP-M) que já temos.
+
 ## 24/11/2026 (continuação) — Gerador de texto por etapa do checklist (generalizado)
 
 - Ideia do usuário: cada etapa do checklist poder ter um texto padrão associado, pra acelerar o processo. Implementado como `checklist_modelo.chave_modelo` (coluna nova) + um registro de geradores em JS (`GERADORES_TEXTO`) — etapa com chave reconhecida ganha um botão "📄 gerar texto" direto na linha do checklist do evento.
