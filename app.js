@@ -17,52 +17,14 @@ let anexosPorItem = {};        // { checklist_exec_id: [anexo, ...] }
 let contratos = [];
 let contratoSelecionadoId = null;
 let config = {};               // chave -> valor (DIAS_LARANJA, DIAS_AMARELO, etc.)
+let meuPerfil = null;          // 'leitura' | 'fiscal_gestor' | 'administrador' | null (sem acesso)
 
 // ---------------------------------------------------------------- auth
-async function entrar() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const senha = document.getElementById('loginSenha').value;
-  const erro = document.getElementById('loginErro');
-  erro.style.display = 'none';
-  const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-  if (error) {
-    erro.textContent = '❌ ' + error.message;
-    erro.style.display = 'block';
-    return;
-  }
-  await aoLogar();
-}
-
-async function criarConta() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const senha = document.getElementById('loginSenha').value;
-  const erro = document.getElementById('loginErro');
-  erro.style.display = 'none';
-  if (!email || senha.length < 6) {
-    erro.textContent = 'Preencha e-mail e uma senha de pelo menos 6 caracteres nos campos acima, depois clique em "criar agora".';
-    erro.style.display = 'block';
-    return;
-  }
-  const { data, error } = await supabase.auth.signUp({ email, password: senha });
-  if (error) {
-    erro.textContent = '❌ ' + error.message;
-    erro.style.display = 'block';
-    return;
-  }
-  if (data.session) {
-    await aoLogar();
-  } else {
-    erro.className = 'alert alert-success py-2 small';
-    erro.textContent = 'Conta criada. Se a confirmação de e-mail estiver ativa no projeto, confira sua caixa de entrada antes de entrar.';
-    erro.style.display = 'block';
-  }
-}
-
 async function entrarComGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
   if (error) {
     const erro = document.getElementById('loginErro');
-    erro.textContent = '❌ ' + error.message + ' (provedor Google configurado no Supabase?)';
+    erro.textContent = '❌ ' + error.message;
     erro.style.display = 'block';
   }
 }
@@ -70,15 +32,24 @@ async function entrarComGoogle() {
 async function sair() {
   await supabase.auth.signOut();
   document.getElementById('app').style.display = 'none';
+  document.getElementById('tela-sem-acesso').style.display = 'none';
   document.getElementById('tela-login').style.display = 'flex';
 }
 
 async function aoLogar() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
+  const { data: perfilRow } = await supabase.from('perfis_usuario').select('perfil').eq('user_id', user.id).maybeSingle();
   document.getElementById('tela-login').style.display = 'none';
+  if (!perfilRow) {
+    document.getElementById('semAcessoEmail').textContent = user.email;
+    document.getElementById('tela-sem-acesso').style.display = 'flex';
+    return;
+  }
+  meuPerfil = perfilRow.perfil;
   document.getElementById('app').style.display = 'flex';
   document.getElementById('userEmail').textContent = user.email;
+  document.getElementById('navUsuarios').style.display = meuPerfil === 'administrador' ? 'block' : 'none';
   await carregarConfig();
   await carregarTiposEvento();
   await carregarEventos();
@@ -93,8 +64,10 @@ function irPara(tela) {
   document.getElementById('tela-eventos').style.display = tela === 'eventos' ? 'block' : 'none';
   document.getElementById('tela-tipos').style.display = tela === 'tipos' ? 'block' : 'none';
   document.getElementById('tela-checklists').style.display = tela === 'checklists' ? 'block' : 'none';
+  document.getElementById('tela-usuarios').style.display = tela === 'usuarios' ? 'block' : 'none';
   document.querySelectorAll('#sidebar a').forEach(a => a.classList.toggle('active', a.dataset.tela === tela));
   if (tela === 'painel') renderPainel();
+  if (tela === 'usuarios') carregarUsuarios();
 }
 
 // ------------------------------------------------------------- config
@@ -309,6 +282,105 @@ async function carregarContratos() {
   renderContratos();
 }
 
+// ---------------------------------------------------------------- usuários
+async function carregarUsuarios() {
+  const [{ data: ativos, error: e1 }, { data: pendentes, error: e2 }, { data: vinculos, error: e3 }] = await Promise.all([
+    supabase.from('perfis_usuario').select('*').order('email'),
+    supabase.from('convites').select('*').is('aceito_em', null).order('criado_em', { ascending: false }),
+    supabase.from('usuario_contratos').select('user_id, contrato_id'),
+  ]);
+  if (e1 || e2 || e3) { alert('Erro ao carregar usuários: ' + (e1 || e2 || e3).message); return; }
+  const vinculosPorUser = {};
+  (vinculos || []).forEach(v => { (vinculosPorUser[v.user_id] ||= []).push(v.contrato_id); });
+  renderUsuariosAtivos(ativos || [], vinculosPorUser);
+  renderUsuariosPendentes(pendentes || []);
+}
+
+function renderUsuariosAtivos(lista, vinculosPorUser) {
+  document.getElementById('tbody-usuarios-ativos').innerHTML = lista.map(u => {
+    const qtd = (vinculosPorUser[u.user_id] || []).length;
+    return `<tr>
+      <td class="small">${esc(u.email)}</td>
+      <td class="small">${esc(u.perfil)}</td>
+      <td class="small">${qtd ? qtd + ' contrato(s)' : '— (só automático por e-mail)'}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-secondary py-0" onclick="window.editarUsuario('${esc(u.email)}', true)">editar</button>
+        <button class="btn btn-sm btn-outline-danger py-0" onclick="window.revogarUsuarioUI('${esc(u.email)}')">revogar</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="text-muted small">Nenhum usuário ativo ainda.</td></tr>';
+}
+
+function renderUsuariosPendentes(lista) {
+  document.getElementById('tbody-usuarios-pendentes').innerHTML = lista.map(c => `<tr>
+    <td class="small">${esc(c.email)}</td>
+    <td class="small">${esc(c.nome || '—')}</td>
+    <td class="small">${esc(c.perfil)}</td>
+    <td>
+      <button class="btn btn-sm btn-outline-secondary py-0" onclick="window.editarUsuario('${esc(c.email)}', false)">editar</button>
+      <button class="btn btn-sm btn-outline-danger py-0" onclick="window.revogarUsuarioUI('${esc(c.email)}')">cancelar convite</button>
+    </td>
+  </tr>`).join('') || '<tr><td colspan="4" class="text-muted small">Nenhum convite pendente.</td></tr>';
+}
+
+function renderCheckboxesContratos(selecionados) {
+  const sel = new Set(selecionados || []);
+  document.getElementById('uContratos').innerHTML = contratos.map(c => `
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" value="${c.id}" id="uc_${c.id}" ${sel.has(c.id) ? 'checked' : ''}>
+      <label class="form-check-label small" for="uc_${c.id}">${esc(c.numero_ano)} — ${esc(c.contratada)}</label>
+    </div>`).join('');
+}
+
+function limparFormUsuario() {
+  document.getElementById('uEmail').value = '';
+  document.getElementById('uEmail').disabled = false;
+  document.getElementById('uNome').value = '';
+  document.getElementById('uPerfil').value = 'leitura';
+  renderCheckboxesContratos([]);
+}
+
+async function editarUsuario(email, ehAtivo) {
+  document.getElementById('uEmail').value = email;
+  document.getElementById('uEmail').disabled = true;
+  if (ehAtivo) {
+    const { data: perfilRow } = await supabase.from('perfis_usuario').select('user_id, perfil').eq('email', email).maybeSingle();
+    document.getElementById('uPerfil').value = perfilRow?.perfil || 'leitura';
+    document.getElementById('uNome').value = '';
+    let vinculados = [];
+    if (perfilRow?.user_id) {
+      const { data } = await supabase.from('usuario_contratos').select('contrato_id').eq('user_id', perfilRow.user_id);
+      vinculados = (data || []).map(v => v.contrato_id);
+    }
+    renderCheckboxesContratos(vinculados);
+  } else {
+    const { data: convite } = await supabase.from('convites').select('*').eq('email', email).maybeSingle();
+    document.getElementById('uPerfil').value = convite?.perfil || 'leitura';
+    document.getElementById('uNome').value = convite?.nome || '';
+    renderCheckboxesContratos(convite?.contratos_ids || []);
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function salvarConviteUsuario() {
+  const email = document.getElementById('uEmail').value.trim();
+  if (!email) { alert('Informe o e-mail.'); return; }
+  const nome = document.getElementById('uNome').value.trim();
+  const perfil = document.getElementById('uPerfil').value;
+  const contratosIds = Array.from(document.querySelectorAll('#uContratos input:checked')).map(el => el.value);
+  const { error } = await supabase.rpc('convidar_usuario', { p_email: email, p_nome: nome || null, p_perfil: perfil, p_contratos: contratosIds });
+  if (error) { alert('Erro ao salvar: ' + error.message); return; }
+  limparFormUsuario();
+  carregarUsuarios();
+}
+
+async function revogarUsuarioUI(email) {
+  if (!confirm(`Revogar o acesso de ${email}? A pessoa deixa de ver qualquer contrato até ser convidada de novo.`)) return;
+  const { error } = await supabase.rpc('revogar_usuario', { p_email: email });
+  if (error) { alert('Erro ao revogar: ' + error.message); return; }
+  carregarUsuarios();
+}
+
 function renderContratos() {
   const busca = (document.getElementById('ctrBusca')?.value || '').toLowerCase();
   const statusFiltro = document.getElementById('ctrStatus')?.value || '';
@@ -366,11 +438,9 @@ async function selecionarContrato(id) {
 
   await carregarCertidoes(id);
 
-  itensTRDAtual = [];
-  respostasMaoObra = {};
   document.getElementById('trdTbodyItens').innerHTML = '';
   document.getElementById('trdMoSecoes').innerHTML = '';
-  atualizarCamposTRD();
+  await carregarRascunhoTRD(id);
 }
 
 // -------------------------------------------------------------- certidões
@@ -540,7 +610,7 @@ function renderSecoesMaoObra() {
 
   const linhasTabela = (n, campos) => Array.from({ length: n }, (_, i) => `
     <div class="row g-1 mb-1">
-      ${campos.map(([id, ph, largura]) => `<div class="col-auto"><input id="${id}${i + 1}" class="form-control form-control-sm" style="width:${largura}" placeholder="${ph}"></div>`).join('')}
+      ${campos.map(([id, ph, largura]) => `<div class="col-auto"><input id="${id}${i + 1}" class="form-control form-control-sm" style="width:${largura}" placeholder="${ph}" onblur="window.salvarRascunhoTRD()"></div>`).join('')}
     </div>`).join('');
   document.getElementById('trdMoNotificacoes').innerHTML = linhasTabela(5, [
     ['trdMoNotifDesc', 'Descrição', '220px'], ['trdMoNotifData', 'Data', '110px'], ['trdMoNotifAtendeu', 'Atendeu? (Sim/Não)', '140px'],
@@ -550,7 +620,7 @@ function renderSecoesMaoObra() {
   ]);
 }
 
-function atualizarRespostaMaoObra(chave, valor) { respostasMaoObra[chave] = valor; }
+function atualizarRespostaMaoObra(chave, valor) { respostasMaoObra[chave] = valor; salvarRascunhoTRD(); }
 
 function atualizarCamposTRD() {
   const tipo = document.getElementById('trdTipo').value;
@@ -588,20 +658,58 @@ async function carregarItensTRD() {
     .slice(0, 10)
     .map(i => ({ item_descricao: i.item_descricao, unidade: i.unidade, quantidade_contratada: i.quantidade_contratada, valorInformado: i.valor_contratado, glosa: 0 }));
   renderTbodyTRD(document.getElementById('trdTipo').value);
+  salvarRascunhoTRD();
+}
+
+// Parser do texto copiado da tela de itens do sistema OXY — formato real:
+// "CODIGO - DESCRICAO[... Ver Mais]\tUNIDADE\tQUANTIDADE\tR$ valor_unit\tqtd\nR$ valor_total\n..."
+// Pega só descrição/unidade/1ª quantidade+valor como ponto de partida — os
+// campos continuam editáveis pra ajustar ao que foi realmente pedido.
+function numeroBR(s) { return parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0; }
+
+function parseItensColados(texto) {
+  const regex = /([^\t\n]+?)\t([^\t\n]+)\tQUANTIDADE\tR\$\s*([\d.,]+)\t([\d.,]+)\s*\nR\$\s*([\d.,]+)/g;
+  const itens = [];
+  let m;
+  while ((m = regex.exec(texto)) !== null) {
+    itens.push({
+      item_descricao: m[1].trim().replace(/\s*Ver Mais\s*$/i, ''),
+      unidade: m[2].trim(),
+      quantidade_contratada: numeroBR(m[4]),
+      valorInformado: numeroBR(m[5]),
+      glosa: 0,
+    });
+  }
+  return itens;
+}
+
+function importarItensColados() {
+  const campo = document.getElementById('trdColarItens');
+  const novos = parseItensColados(campo.value);
+  if (!novos.length) { alert('Não encontrei itens nesse formato. Confere se o texto foi colado igual veio do sistema (colunas Unidade/QUANTIDADE).'); return; }
+  const vagas = 10 - itensTRDAtual.length;
+  if (vagas <= 0) { alert('Máximo de 10 itens no modelo de TRP/TRD.'); return; }
+  itensTRDAtual.push(...novos.slice(0, vagas));
+  if (novos.length > vagas) alert(`Importados ${vagas} de ${novos.length} itens encontrados — limite de 10 itens por termo.`);
+  campo.value = '';
+  renderTbodyTRD(document.getElementById('trdTipo').value);
+  salvarRascunhoTRD();
 }
 
 function adicionarItemTRD() {
   if (itensTRDAtual.length >= 10) { alert('Máximo de 10 itens no modelo de TRP/TRD.'); return; }
   itensTRDAtual.push({ item_descricao: '', unidade: '', quantidade_contratada: '', valorInformado: 0, glosa: 0 });
   renderTbodyTRD(document.getElementById('trdTipo').value);
+  salvarRascunhoTRD();
 }
 
 function removerItemTRD(idx) {
   itensTRDAtual.splice(idx, 1);
   renderTbodyTRD(document.getElementById('trdTipo').value);
+  salvarRascunhoTRD();
 }
 
-function atualizarCampoItemTRD(idx, campo, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx][campo] = valor; }
+function atualizarCampoItemTRD(idx, campo, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx][campo] = valor; salvarRascunhoTRD(); }
 
 function renderTbodyTRD(tipo) {
   const el = document.getElementById('trdTbodyItens');
@@ -633,8 +741,78 @@ function renderTbodyTRD(tipo) {
   ).join('');
 }
 
-function atualizarValorItemTRD(idx, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx].valorInformado = Number(valor.replace(',', '.')) || 0; }
-function atualizarGlosaItemTRD(idx, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx].glosa = Number(valor.replace(',', '.')) || 0; }
+function atualizarValorItemTRD(idx, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx].valorInformado = Number(valor.replace(',', '.')) || 0; salvarRascunhoTRD(); }
+function atualizarGlosaItemTRD(idx, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx].glosa = Number(valor.replace(',', '.')) || 0; salvarRascunhoTRD(); }
+
+// ---------------------------------------------------------- rascunho TRP/TRD
+function coletarEstadoTRD() {
+  const v = id => document.getElementById(id)?.value ?? '';
+  return {
+    tipo: v('trdTipo'),
+    ordemServico: v('trdOrdemServico'),
+    notaFiscal: v('trdNotaFiscal'),
+    periodoRef: v('trdPeriodoRef'),
+    empenho: v('trdEmpenho'),
+    dataTermo: v('trdDataTermo'),
+    conformidade: v('trdConformidade'),
+    hab1: v('trdHab1'),
+    hab2: v('trdHab2'),
+    obsHab: v('trdObsHab'),
+    moHabGeral: v('trdMoHabGeral'),
+    moObsSec6: v('trdMoObsSec6'),
+    moNotificacoes: Array.from({ length: 5 }, (_, i) => ({
+      desc: v(`trdMoNotifDesc${i + 1}`), data: v(`trdMoNotifData${i + 1}`), atendeu: v(`trdMoNotifAtendeu${i + 1}`),
+    })),
+    moDocumentos: Array.from({ length: 5 }, (_, i) => ({
+      tipo: v(`trdMoDocTipo${i + 1}`), data: v(`trdMoDocData${i + 1}`),
+    })),
+    respostasMaoObra,
+    itens: itensTRDAtual,
+  };
+}
+
+let salvarRascunhoTimeout = null;
+function salvarRascunhoTRD() {
+  if (!contratoSelecionadoId) return;
+  clearTimeout(salvarRascunhoTimeout);
+  salvarRascunhoTimeout = setTimeout(async () => {
+    const dados = coletarEstadoTRD();
+    const { data: userData } = await supabase.auth.getUser();
+    await supabase.from('trd_rascunhos').upsert({
+      contrato_id: contratoSelecionadoId,
+      dados,
+      atualizado_em: new Date().toISOString(),
+      atualizado_por: userData?.user?.email || null,
+    }, { onConflict: 'contrato_id' });
+  }, 400);
+}
+
+async function carregarRascunhoTRD(id) {
+  const { data } = await supabase.from('trd_rascunhos').select('dados').eq('contrato_id', id).maybeSingle();
+  const d = data?.dados || {};
+  itensTRDAtual = Array.isArray(d.itens) ? d.itens : [];
+  respostasMaoObra = d.respostasMaoObra || {};
+  if (d.tipo) document.getElementById('trdTipo').value = d.tipo;
+  atualizarCamposTRD();
+  const set = (idEl, val) => { const el = document.getElementById(idEl); if (el && val) el.value = val; };
+  set('trdOrdemServico', d.ordemServico);
+  set('trdNotaFiscal', d.notaFiscal);
+  set('trdPeriodoRef', d.periodoRef);
+  set('trdEmpenho', d.empenho);
+  set('trdDataTermo', d.dataTermo);
+  set('trdConformidade', d.conformidade);
+  set('trdHab1', d.hab1);
+  set('trdHab2', d.hab2);
+  set('trdObsHab', d.obsHab);
+  set('trdMoHabGeral', d.moHabGeral);
+  set('trdMoObsSec6', d.moObsSec6);
+  (d.moNotificacoes || []).forEach((n, i) => {
+    set(`trdMoNotifDesc${i + 1}`, n.desc); set(`trdMoNotifData${i + 1}`, n.data); set(`trdMoNotifAtendeu${i + 1}`, n.atendeu);
+  });
+  (d.moDocumentos || []).forEach((n, i) => {
+    set(`trdMoDocTipo${i + 1}`, n.tipo); set(`trdMoDocData${i + 1}`, n.data);
+  });
+}
 
 async function gerarTRPouTRD() {
   const c = contratos.find(x => x.id === contratoSelecionadoId);
@@ -666,7 +844,7 @@ async function gerarTRPouTRD() {
   linha(`Vigência: ${c.vigencia_inicio ? formatarDataISO(c.vigencia_inicio) : '—'} a ${c.vigencia_fim ? formatarDataISO(c.vigencia_fim) : '—'}`);
   linha(`Contratante: FOZTRANS - Instituto de Transportes e Trânsito de Foz do Iguaçu`);
   linha(`Contratada: ${c.contratada || '—'}`);
-  linha(`Ordem de Serviço: ${document.getElementById('trdOrdemServico').value || '—'}`);
+  linha(`Ordem de Serviço/Requisição: ${document.getElementById('trdOrdemServico').value || '—'}`);
   linha(`Nota Fiscal nº: ${document.getElementById('trdNotaFiscal').value || '—'}`);
   linha(`Período de referência: ${document.getElementById('trdPeriodoRef').value || '—'}`);
   if (tipo === 'TRD3') linha(`Empenho: ${document.getElementById('trdEmpenho').value || '—'}`);
@@ -1581,10 +1759,12 @@ function esc(s) {
 }
 
 // ---------------------------------------------------------------- expõe
-window.entrar = entrar;
-window.criarConta = criarConta;
 window.entrarComGoogle = entrarComGoogle;
 window.sair = sair;
+window.editarUsuario = editarUsuario;
+window.salvarConviteUsuario = salvarConviteUsuario;
+window.limparFormUsuario = limparFormUsuario;
+window.revogarUsuarioUI = revogarUsuarioUI;
 window.irPara = irPara;
 window.selecionarTipo = selecionarTipo;
 window.moverEtapa = moverEtapa;
@@ -1619,6 +1799,8 @@ window.removerItemTRD = removerItemTRD;
 window.atualizarCampoItemTRD = atualizarCampoItemTRD;
 window.atualizarValorItemTRD = atualizarValorItemTRD;
 window.atualizarGlosaItemTRD = atualizarGlosaItemTRD;
+window.importarItensColados = importarItensColados;
+window.salvarRascunhoTRD = salvarRascunhoTRD;
 window.gerarTRPouTRD = gerarTRPouTRD;
 window.atualizarRespostaMaoObra = atualizarRespostaMaoObra;
 window.abrirEventoNoContrato = abrirEventoNoContrato;

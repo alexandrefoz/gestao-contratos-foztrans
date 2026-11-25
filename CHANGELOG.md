@@ -1,5 +1,19 @@
 # Changelog
 
+## 25/11/2026 (continuação 4) — Login só por Google + painel de Administrador Master
+
+- **Login**: tirado e-mail/senha e "criar conta" — agora só "Entrar com Google". Ninguém entra sem ser convidado antes pelo administrador.
+- **Convite por e-mail** (`convites`): administrador pré-cadastra e-mail + nome + perfil (+ contratos vinculados) antes da pessoa logar pela primeira vez. Um trigger em `auth.users` (`lidar_novo_usuario`) aplica o convite automaticamente no primeiro login via Google — sem precisar eu rodar SQL na mão (era o que vinha acontecendo até agora). Quem loga sem convite cai numa tela "Sem acesso".
+- **Acesso trava por contrato** (antes: qualquer perfil autenticado lia todos os 47 contratos). Nova função `tenho_acesso_contrato()`: libera se for `administrador`, OU se o e-mail do usuário bater com fiscal técnico/administrativo/gestor do contrato (já existia essa checagem só pra escrita; agora vale pra leitura também), OU se houver vínculo manual na nova tabela `usuario_contratos`. Reescritas as políticas de leitura de `contratos`, `eventos`, `checklist_exec`, `anexos`, `certidoes_contrato`, `itens_contrato_saldo`, `trd_rascunhos`, `alertas_log`. `historico` (log genérico cross-tabela) ficou restrito a administrador, mais simples e seguro que tentar resolver o contrato por tabela/registro_id.
+- **Painel "Usuários"** (só aparece pro administrador): convidar/editar usuário (e-mail, nome, perfil, contratos vinculados via checkbox), listas de usuários ativos e convites pendentes, revogar acesso. Tudo via RPCs novas `convidar_usuario`/`revogar_usuario` (únicas com permissão de ler/gravar em `auth.users`/`perfis_usuario` fora do próprio usuário).
+- Perfis continuam os 3 que já existiam: `leitura`, `fiscal_gestor`, `administrador` — só mudou quem decide ter acesso a qual contrato.
+
+## 25/11/2026 (continuação 3) — Itens do TRP/TRD: colar texto pra importar + rascunho salvo
+
+- Dá pra colar o texto copiado da tela de itens/saldo do sistema OXY (mesmo formato usado pra alimentar `itens_contrato_saldo`) direto na tela de emissão de TRP/TRD — botão "Importar itens colados" reconhece descrição/unidade/quantidade/valor e preenche a tabela, sem precisar digitar cada campo. Continua editável depois, pra ajustar à requisição/OS real.
+- Rascunho do TRP/TRD (tipo, itens, ordem de serviço/requisição, nota fiscal, período, empenho, conformidade/habilitação, checklist de mão de obra, notificações, documentos) agora fica salvo em `trd_rascunhos` conforme vai sendo preenchido — ao trocar de contrato e voltar, o trabalho não se perde mais.
+- Campo renomeado para "Ordem de Serviço/Requisição", já que é isso que o número geralmente representa.
+
 ## 25/11/2026 (continuação 2) — TRP/TRD: itens não carregam mais automaticamente do contrato
 
 - Correção de design apontada pelo usuário: alguns contratos têm centenas de itens cadastrados, mas numa requisição/OS real só um ou dois são efetivamente pedidos. Carregar os itens do contrato automaticamente (mesmo limitando a 10) jogava itens não solicitados pro TRP/TRD.

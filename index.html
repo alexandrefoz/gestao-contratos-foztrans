@@ -28,22 +28,25 @@
       <h5 class="card-title mb-1">Gestão de Contratos</h5>
       <p class="text-muted small mb-3">FOZTRANS — acesso restrito</p>
       <div id="loginErro" class="alert alert-danger py-2 small" style="display:none"></div>
-      <div class="mb-2">
-        <label class="form-label small">E-mail</label>
-        <input type="email" id="loginEmail" class="form-control form-control-sm">
-      </div>
-      <div class="mb-3">
-        <label class="form-label small">Senha</label>
-        <input type="password" id="loginSenha" class="form-control form-control-sm">
-      </div>
-      <button class="btn btn-primary btn-sm w-100 mb-2" onclick="entrar()">Entrar</button>
-      <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="entrarComGoogle()">Entrar com Google</button>
-      <button class="btn btn-link btn-sm w-100" onclick="criarConta()">Ainda não tenho conta — criar agora</button>
+      <button class="btn btn-primary btn-sm w-100 mb-2" onclick="entrarComGoogle()">Entrar com Google</button>
       <p class="text-muted mt-3 mb-0" style="font-size:11px">
-        Login com Google requer o provedor configurado no painel do Supabase
-        (Authentication → Providers → Google). Até lá, use e-mail/senha
-        cadastrados pelo administrador em Authentication → Users.
+        O acesso é só por convite — o administrador cadastra seu e-mail antes.
+        Se você entrar e aparecer "sem acesso", fale com o administrador.
       </p>
+    </div>
+  </div>
+</div>
+
+<div id="tela-sem-acesso" style="display:none;min-height:100vh" class="d-flex align-items-center justify-content-center">
+  <div class="card login-card shadow-sm">
+    <div class="card-body p-4 text-center">
+      <h5 class="card-title mb-2">Sem acesso</h5>
+      <p class="text-muted small mb-3">
+        Sua conta (<span id="semAcessoEmail" class="fw-semibold"></span>) entrou certinho,
+        mas ainda não tem permissão cadastrada neste sistema. Peça pro administrador
+        te convidar.
+      </p>
+      <button class="btn btn-sm btn-outline-secondary" onclick="sair()">Sair</button>
     </div>
   </div>
 </div>
@@ -56,6 +59,7 @@
     <a href="#" data-tela="eventos" onclick="irPara('eventos');return false">Eventos</a>
     <a href="#" data-tela="checklists" onclick="irPara('checklists');return false">Checklists por tipo de evento</a>
     <a href="#" data-tela="tipos" onclick="irPara('tipos');return false">Tipos de evento</a>
+    <a href="#" data-tela="usuarios" id="navUsuarios" style="display:none" onclick="irPara('usuarios');return false">Usuários</a>
     <hr style="border-color:rgba(255,255,255,.2)">
     <div class="small" id="userEmail" style="opacity:.7"></div>
     <button class="btn btn-sm btn-outline-light w-100 mt-2" onclick="sair()">Sair</button>
@@ -122,35 +126,40 @@
                   <div class="row g-2 mb-2">
                     <div class="col-auto">
                       <label class="form-label small mb-0">Tipo</label>
-                      <select id="trdTipo" class="form-select form-select-sm" onchange="window.atualizarCamposTRD()">
+                      <select id="trdTipo" class="form-select form-select-sm" onchange="window.atualizarCamposTRD(); window.salvarRascunhoTRD()">
                         <option value="TRP">TRP — Recebimento Provisório</option>
                         <option value="TRD3">TRD — Bens/Serviços comuns</option>
                         <option value="TRD2">TRD — Mão de obra (dedicação exclusiva)</option>
                       </select>
                     </div>
                     <div class="col-auto">
-                      <label class="form-label small mb-0">Ordem de Serviço</label>
-                      <input id="trdOrdemServico" class="form-control form-control-sm" style="width:120px">
+                      <label class="form-label small mb-0">Ordem de Serviço/Requisição</label>
+                      <input id="trdOrdemServico" class="form-control form-control-sm" style="width:120px" onblur="window.salvarRascunhoTRD()">
                     </div>
                     <div class="col-auto">
                       <label class="form-label small mb-0">Nota Fiscal</label>
-                      <input id="trdNotaFiscal" class="form-control form-control-sm" style="width:120px">
+                      <input id="trdNotaFiscal" class="form-control form-control-sm" style="width:120px" onblur="window.salvarRascunhoTRD()">
                     </div>
                     <div class="col-auto">
                       <label class="form-label small mb-0">Período de referência</label>
-                      <input id="trdPeriodoRef" class="form-control form-control-sm" style="width:160px" placeholder="01/10/2026 a 31/10/2026">
+                      <input id="trdPeriodoRef" class="form-control form-control-sm" style="width:160px" placeholder="01/10/2026 a 31/10/2026" onblur="window.salvarRascunhoTRD()">
                     </div>
                     <div class="col-auto" id="trdColEmpenho">
                       <label class="form-label small mb-0">Empenho</label>
-                      <input id="trdEmpenho" class="form-control form-control-sm" style="width:100px">
+                      <input id="trdEmpenho" class="form-control form-control-sm" style="width:100px" onblur="window.salvarRascunhoTRD()">
                     </div>
                     <div class="col-auto">
                       <label class="form-label small mb-0">Data do termo</label>
-                      <input id="trdDataTermo" type="date" class="form-control form-control-sm">
+                      <input id="trdDataTermo" type="date" class="form-control form-control-sm" onblur="window.salvarRascunhoTRD()">
                     </div>
                   </div>
                   <div id="trdColItens">
                     <div class="small text-muted mb-1">Só os itens realmente pedidos na requisição/OS devem entrar aqui — não o contrato inteiro.</div>
+                    <div class="mb-2">
+                      <label class="form-label small mb-0">Colar itens (copiado da tela de itens/saldo do sistema OXY)</label>
+                      <textarea id="trdColarItens" class="form-control form-control-sm" rows="2" placeholder="Cole aqui o texto copiado, com as colunas Unidade/QUANTIDADE"></textarea>
+                      <button class="btn btn-sm btn-outline-primary mt-1" onclick="window.importarItensColados()">Importar itens colados</button>
+                    </div>
                     <button class="btn btn-sm btn-outline-secondary mb-2" onclick="window.adicionarItemTRD()">+ item</button>
                     <button class="btn btn-sm btn-outline-secondary mb-2" onclick="window.carregarItensTRD()" title="Útil só se o contrato tiver poucos itens">Carregar todos os itens do contrato</button>
                     <div class="table-responsive mb-2">
@@ -164,7 +173,7 @@
                     <div class="row g-2 mb-2">
                       <div class="col-auto">
                         <label class="form-label small mb-0">Conformidade do período</label>
-                        <select id="trdConformidade" class="form-select form-select-sm">
+                        <select id="trdConformidade" class="form-select form-select-sm" onchange="window.salvarRascunhoTRD()">
                           <option value="sim">Sim</option>
                           <option value="parcial">Parcialmente</option>
                           <option value="nao">Não</option>
@@ -172,31 +181,31 @@
                       </div>
                       <div class="col-auto">
                         <label class="form-label small mb-0">Mantém habilitação/qualificação?</label>
-                        <select id="trdHab1" class="form-select form-select-sm">
+                        <select id="trdHab1" class="form-select form-select-sm" onchange="window.salvarRascunhoTRD()">
                           <option value="sim">Sim</option><option value="nao">Não</option><option value="na">N/A</option>
                         </select>
                       </div>
                       <div class="col-auto">
                         <label class="form-label small mb-0">Mantém regularidade fiscal/trabalhista?</label>
-                        <select id="trdHab2" class="form-select form-select-sm">
+                        <select id="trdHab2" class="form-select form-select-sm" onchange="window.salvarRascunhoTRD()">
                           <option value="sim">Sim</option><option value="nao">Não</option><option value="na">N/A</option>
                         </select>
                       </div>
                     </div>
                     <label class="form-label small mb-0">Observações sobre habilitação</label>
-                    <textarea id="trdObsHab" class="form-control form-control-sm mb-2" rows="2"></textarea>
+                    <textarea id="trdObsHab" class="form-control form-control-sm mb-2" rows="2" onblur="window.salvarRascunhoTRD()"></textarea>
                   </div>
 
                   <div id="trdSecaoMaoObra" style="display:none">
                     <div class="mb-2">
                       <label class="form-label small mb-0">Mantém regularidade fiscal/trabalhista e inc. XXXIII art. 7º CF/88?</label>
-                      <select id="trdMoHabGeral" class="form-select form-select-sm w-auto d-inline-block">
+                      <select id="trdMoHabGeral" class="form-select form-select-sm w-auto d-inline-block" onchange="window.salvarRascunhoTRD()">
                         <option value="sim">Sim</option><option value="nao">Não</option><option value="na">N/A</option>
                       </select>
                     </div>
                     <div id="trdMoSecoes" style="max-height:420px;overflow-y:auto" class="border rounded p-2 mb-2 bg-white"></div>
                     <label class="form-label small mb-0">Obs. (seção 6 — término do contrato)</label>
-                    <textarea id="trdMoObsSec6" class="form-control form-control-sm mb-2" rows="2"></textarea>
+                    <textarea id="trdMoObsSec6" class="form-control form-control-sm mb-2" rows="2" onblur="window.salvarRascunhoTRD()"></textarea>
                     <label class="form-label small mb-1">Notificações no período (até 5)</label>
                     <div id="trdMoNotificacoes" class="mb-2"></div>
                     <label class="form-label small mb-1">Documentos comprobatórios juntados (até 5)</label>
@@ -332,6 +341,56 @@
             </table>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- TELA: USUÁRIOS (só administrador) -->
+    <div id="tela-usuarios" style="display:none">
+      <h5 class="mb-3">Usuários</h5>
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <h6 class="small text-muted">Convidar / editar acesso</h6>
+          <div class="row g-2 mb-2">
+            <div class="col-auto">
+              <label class="form-label small mb-0">E-mail (login Google)</label>
+              <input id="uEmail" class="form-control form-control-sm" style="width:220px">
+            </div>
+            <div class="col-auto">
+              <label class="form-label small mb-0">Nome</label>
+              <input id="uNome" class="form-control form-control-sm" style="width:200px">
+            </div>
+            <div class="col-auto">
+              <label class="form-label small mb-0">Perfil</label>
+              <select id="uPerfil" class="form-select form-select-sm">
+                <option value="leitura">Leitura (só visualiza)</option>
+                <option value="fiscal_gestor">Fiscal/Gestor (edita os contratos dele)</option>
+                <option value="administrador">Administrador (vê e edita tudo)</option>
+              </select>
+            </div>
+          </div>
+          <div class="small text-muted mb-1">
+            Contratos vinculados manualmente (além do vínculo automático por e-mail de fiscal/gestor na planilha):
+          </div>
+          <div id="uContratos" class="border rounded p-2 mb-2 bg-white" style="max-height:180px;overflow-y:auto"></div>
+          <button class="btn btn-sm btn-primary" onclick="window.salvarConviteUsuario()">Salvar</button>
+          <button class="btn btn-sm btn-link" onclick="window.limparFormUsuario()">Limpar</button>
+        </div>
+      </div>
+
+      <h6 class="small text-muted">Usuários ativos</h6>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-bordered bg-white align-middle">
+          <thead class="table-light"><tr><th>E-mail</th><th>Perfil</th><th>Contratos vinculados</th><th></th></tr></thead>
+          <tbody id="tbody-usuarios-ativos"></tbody>
+        </table>
+      </div>
+
+      <h6 class="small text-muted">Convites pendentes (ainda não logaram)</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered bg-white align-middle">
+          <thead class="table-light"><tr><th>E-mail</th><th>Nome</th><th>Perfil</th><th></th></tr></thead>
+          <tbody id="tbody-usuarios-pendentes"></tbody>
+        </table>
       </div>
     </div>
 
