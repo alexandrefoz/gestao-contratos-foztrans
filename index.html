@@ -29,9 +29,21 @@
       <p class="text-muted small mb-3">FOZTRANS — acesso restrito</p>
       <div id="loginErro" class="alert alert-danger py-2 small" style="display:none"></div>
       <button class="btn btn-primary btn-sm w-100 mb-2" onclick="entrarComGoogle()">Entrar com Google</button>
-      <p class="text-muted mt-3 mb-0" style="font-size:11px">
-        O acesso é só por convite — o administrador cadastra seu e-mail antes.
-        Se você entrar e aparecer "sem acesso", fale com o administrador.
+      <hr class="my-2">
+      <div class="mb-2">
+        <label class="form-label small mb-0">E-mail</label>
+        <input type="email" id="loginEmail" class="form-control form-control-sm">
+      </div>
+      <div class="mb-2">
+        <label class="form-label small mb-0">Senha</label>
+        <input type="password" id="loginSenha" class="form-control form-control-sm">
+      </div>
+      <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="entrar()">Entrar com e-mail/senha</button>
+      <p class="text-muted mt-2 mb-0" style="font-size:11px">
+        Temporário: Google ainda não está habilitado no Supabase — use
+        e-mail/senha por enquanto. O acesso é só por convite — o
+        administrador cadastra seu e-mail antes. Se você entrar e aparecer
+        "sem acesso", fale com o administrador.
       </p>
     </div>
   </div>

@@ -20,6 +20,24 @@ let config = {};               // chave -> valor (DIAS_LARANJA, DIAS_AMARELO, et
 let meuPerfil = null;          // 'leitura' | 'fiscal_gestor' | 'administrador' | null (sem acesso)
 
 // ---------------------------------------------------------------- auth
+// Temporário: Google ainda não habilitado no provedor do Supabase — entrar()
+// é só pra quem já tinha conta de e-mail/senha (ex.: administrador) não
+// ficar trancado fora enquanto isso não é configurado. Sem "criar conta" —
+// o modelo é só-convite, não cadastro livre.
+async function entrar() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  const erro = document.getElementById('loginErro');
+  erro.style.display = 'none';
+  const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+  if (error) {
+    erro.textContent = '❌ ' + error.message;
+    erro.style.display = 'block';
+    return;
+  }
+  await aoLogar();
+}
+
 async function entrarComGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
   if (error) {
@@ -1759,6 +1777,7 @@ function esc(s) {
 }
 
 // ---------------------------------------------------------------- expõe
+window.entrar = entrar;
 window.entrarComGoogle = entrarComGoogle;
 window.sair = sair;
 window.editarUsuario = editarUsuario;
