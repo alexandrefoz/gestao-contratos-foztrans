@@ -1,5 +1,12 @@
 # Changelog
 
+## 24/11/2026 (continuação) — Texto padrão de Memorando/Autorização
+
+- Vista a íntegra do processo real de reajuste da Moving Tech (83 páginas, processo 42.026/2026): confirma que a "Autorização" (bi-assinada por Superintendente + DAF) é emitida direto na plataforma de assinatura da Prefeitura (SID/OXY, `sistemas.pmfi.pr.gov.br`), não pelo nosso sistema nem pelo "Emissão de Termos" — não há nada para gerar/reconstruir ali, só anexar o PDF já assinado no checklist.
+- Adicionado, na tela de evento, um gerador de **texto** (não documento) para colar no SID ou Word: "Memorando de abertura" e "Autorização", com os dados do contrato (número, objeto, contratada, CNPJ) já preenchidos.
+  - Para **reajuste**: fundamentação legal real e validada (Decreto Municipal nº 32.398/2024, art. 290 e art. 303, X), extraída do processo real da Moving Tech.
+  - Para os demais tipos de evento (prorrogação, repactuação, revisão/reequilíbrio, apostilamento/aditivo genérico): texto deixa um espaço marcado `[Descrever...]` para o usuário preencher — fundamentação específica desses tipos ainda não foi validada contra processo real, então não foi inventada.
+
 ## 24/11/2026 (continuação) — TRP/TRD/certidões: sistema existente, não reconstruído
 
 - Achado importante: existe um projeto Apps Script separado e completo, "Emissão de Termos" (`script.google.com/.../1j9fkw2HAGsSB24-HtfrUpvs0U46sRSlSYlMwN9slFWgy7AMfQLz7hBTS`), rodando em Planilha Google + Web App publicado, cobrindo exatamente o que seria construído agora: contratos/itens/saldos próprios, certidões com OCR (detecta tipo — FGTS/CNDT/PGFN/Estadual/Municipal/Declaração art.7º XXXIII —, extrai CNPJ/razão social/validade, calcula status), geração de TRP/TRD (Anexo I/II/III) via template do Google Docs com seções de habilitação/conformidade/itens com glosa, ordens de serviço, notificações, auditoria, usuários/perfis.

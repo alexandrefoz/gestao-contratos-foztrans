@@ -503,7 +503,7 @@ function renderPainelVencimentos() {
 async function carregarEventos() {
   const { data, error } = await supabase
     .from('eventos')
-    .select('*, contratos(numero_ano, contratada, objeto, valor_global, valor_mensal, data_base_reajuste, indice_reajuste), tipos_evento(rotulo, tipo)')
+    .select('*, contratos(numero_ano, contratada, objeto, cnpj, valor_global, valor_mensal, data_base_reajuste, indice_reajuste), tipos_evento(rotulo, tipo)')
     .order('data_abertura', { ascending: false })
     .limit(50);
   if (error) { alert('Erro ao carregar eventos: ' + error.message); return; }
@@ -625,6 +625,56 @@ function renderChecklistExec() {
     </div>
   `;
   }).join('') || '<div class="text-muted">Este evento não tem etapas no checklist.</div>';
+}
+
+// -------------------------------------------------------------- textos padrão
+// Fundamentação validada contra processo real (Moving Tech, processo 42.026/2026)
+// só existe para "reajuste". Para os demais tipos, deixa marcado para revisão —
+// não inventa artigo/decreto que não foi conferido.
+const JUSTIFICATIVA_POR_TIPO = {
+  reajuste: (c) => `O Contrato nº ${c.numero_ano || '[CONTRATO]'}, firmado com a empresa ${c.contratada || '[CONTRATADA]'}, atingiu o interregno mínimo de 12 (doze) meses desde a última data-base, ensejando o reajuste dos valores contratados.\n\nA concessão de ofício é competência do gestor do contrato, nos termos do Decreto Municipal nº 32.398/2024 (art. 290 e art. 303, inciso X).\n\nA adoção proativa dessa medida preserva o equilíbrio econômico-financeiro da avença e afasta o risco de futuros pedidos de reequilíbrio por defasagem inflacionária acumulada.`,
+};
+const FINALIDADE_POR_TIPO = {
+  reajuste: 'o processamento de reajuste contratual',
+  prorrogacao: 'o processamento de prorrogação do prazo de vigência contratual',
+  repactuacao: 'o processamento de repactuação contratual',
+  revisao_reequilibrio: 'o processamento de revisão/reequilíbrio econômico-financeiro do contrato',
+  apostilamento_generico: 'o processamento de apostilamento contratual',
+  aditivo_generico: 'o processamento de termo aditivo contratual',
+};
+
+function gerarTextoAutorizacao() {
+  const c = eventoAtual.contratos || {};
+  const tipo = eventoAtual.tipos_evento?.tipo;
+  const tipoDoc = document.getElementById('tipoDocumentoTexto').value;
+  const finalidade = FINALIDADE_POR_TIPO[tipo] || 'o processamento do presente evento contratual';
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const out = document.getElementById('textoAutorizacao');
+
+  if (tipoDoc === 'autorizacao') {
+    out.value = `Fica autorizada a abertura e instrução de processo administrativo vinculado ao Contrato nº ${c.numero_ano || '[CONTRATO]'}, que tem como objeto ${c.objeto || '[OBJETO]'}, que será prestado nas condições estabelecidas no Termo de Referência, e como contratada a empresa ${c.contratada || '[CONTRATADA]'}${c.cnpj ? ', CNPJ: ' + c.cnpj : ''}, visando ${finalidade}.\n\nFoz do Iguaçu – PR, ${hoje}.`;
+    return;
+  }
+
+  const justificativa = JUSTIFICATIVA_POR_TIPO[tipo]
+    ? JUSTIFICATIVA_POR_TIPO[tipo](c)
+    : `[Descrever aqui a necessidade e fundamentação legal específica deste evento — tipo "${eventoAtual.tipos_evento?.rotulo || tipo}" ainda não tem modelo de texto validado contra processo real. Não preencher de forma automática.]`;
+
+  out.value = `MEMORANDO INTERNO\n` +
+    `Destinatário: FOZTRANS - SUPERINTENDÊNCIA; FOZTRANS / DAF - DIRETORIA ADMINISTRATIVA E FINANCEIRA.\n` +
+    `Assunto: ABERTURA DE PROCESSO ADMINISTRATIVO - ${(eventoAtual.tipos_evento?.rotulo || '').toUpperCase()} CONTRATO N.º ${c.numero_ano || '[CONTRATO]'} - ${c.contratada || '[CONTRATADA]'}\n` +
+    `Data: ${hoje}\n\n` +
+    `Prezado Diretor Superintendente,\n\n` +
+    `1. DA NECESSIDADE E FUNDAMENTAÇÃO\n${justificativa}\n\n` +
+    `2. DA SOLICITAÇÃO\n` +
+    `Na qualidade de Gestor do Contrato, solicito autorização para abertura do processo administrativo de ${finalidade}, para os trâmites internos.\n\n` +
+    `Atenciosamente,`;
+}
+
+function copiarTextoAutorizacao() {
+  const el = document.getElementById('textoAutorizacao');
+  el.select();
+  navigator.clipboard?.writeText(el.value).catch(() => {});
 }
 
 // -------------------------------------------------------------- reajuste
@@ -1009,6 +1059,8 @@ window.salvarEtapa = salvarEtapa;
 window.excluirEtapa = excluirEtapa;
 window.carregarEventos = carregarEventos;
 window.selecionarEvento = selecionarEvento;
+window.gerarTextoAutorizacao = gerarTextoAutorizacao;
+window.copiarTextoAutorizacao = copiarTextoAutorizacao;
 window.calcularReajuste = calcularReajuste;
 window.aplicarReajuste = aplicarReajuste;
 window.atualizarCampoExec = atualizarCampoExec;

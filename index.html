@@ -163,6 +163,20 @@
             </div>
             <div id="dossieAviso" class="alert alert-warning py-2 small" style="display:none"></div>
 
+            <div class="card mb-3">
+              <div class="card-body">
+                <h6 class="card-title mb-2">📋 Texto de autorização (abertura de processo)</h6>
+                <div class="small text-muted mb-2">Modelo padrão — confira o fundamento legal específico antes de colar no SID/OXY ou Word.</div>
+                <select id="tipoDocumentoTexto" class="form-select form-select-sm d-inline-block w-auto mb-2">
+                  <option value="memorando">Memorando de abertura</option>
+                  <option value="autorizacao">Autorização (Superintendência + DAF)</option>
+                </select>
+                <button class="btn btn-sm btn-primary mb-2" onclick="window.gerarTextoAutorizacao()">Gerar texto</button>
+                <textarea id="textoAutorizacao" class="form-control form-control-sm mb-2" rows="4" placeholder="Clique em Gerar texto..."></textarea>
+                <button class="btn btn-sm btn-outline-secondary" onclick="window.copiarTextoAutorizacao()">📋 Copiar</button>
+              </div>
+            </div>
+
             <div id="cardReajuste" class="card mb-3" style="display:none">
               <div class="card-body">
                 <h6 class="card-title mb-2">📈 Cálculo de reajuste</h6>
