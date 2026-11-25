@@ -367,7 +367,9 @@ async function selecionarContrato(id) {
   await carregarCertidoes(id);
 
   itensTRDAtual = [];
+  respostasMaoObra = {};
   document.getElementById('trdTbodyItens').innerHTML = '';
+  document.getElementById('trdMoSecoes').innerHTML = '';
   atualizarCamposTRD();
 }
 
@@ -450,11 +452,115 @@ async function baixarCertidao(tipo) {
 
 // -------------------------------------------------------------- TRP/TRD
 let itensTRDAtual = [];
+let respostasMaoObra = {};
+
+// Validado contra o template real (ANEXO_II_TRD_MO_CORRIGIDO) — art. 50 e
+// art. 121 §3º da Lei 14.133/2021. Gerado dinamicamente em vez de escrito
+// campo a campo no HTML (são 44 itens).
+const TRD_MO_SECOES = [
+  { titulo: '2.1 – A CONTRATADA forneceu cópia de:', opcoes: 4, campos: [
+    ['registro_ponto', 'Registro de ponto'],
+    ['salarios', 'Recibo de pagamento de salários, adicionais, horas extras, RSR e 13º'],
+    ['fgts_deposito', 'Comprovante de depósito do FGTS'],
+    ['ferias', 'Recibo de concessão e pagamento de férias e adicional'],
+    ['quitacao_trabalhista', 'Recibo de quitação de obrigações trabalhistas/previdenciárias de dispensados'],
+    ['vale_transporte', 'Recibo de pagamento de vale-transporte/vale-alimentação'],
+  ]},
+  { titulo: '3.1 – Condicionantes do pagamento:', opcoes: 4, campos: [
+    ['caucao', 'Caução, fiança bancária ou seguro-garantia'],
+    ['quitacao_obrigacoes', 'Comprovação de quitação das obrigações trabalhistas vencidas'],
+    ['conta_vinculada', 'Depósito de valores em conta vinculada'],
+    ['pagamento_direto', 'Pagamento direto de verbas trabalhistas em caso de inadimplemento'],
+  ]},
+  { titulo: '4.1 – Na ADMISSÃO, a CONTRATADA forneceu cópia de:', opcoes: 4, campos: [
+    ['registro_empregado', 'Registro de empregado (CLT, art. 41)'],
+    ['contrato_experiencia', 'Contrato de Experiência (CLT, art. 443)'],
+    ['ctps', 'CTPS (CLT, art. 29)'],
+    ['aso_admissional', 'Atestado de Saúde Ocupacional Admissional'],
+    ['salario_familia', 'Termo de Responsabilidade – Salário-Família'],
+    ['dependentes_ir', 'Declaração de dependentes para IR'],
+    ['caged_admissao', 'CAGED – admissão'],
+    ['nepotismo_adm', 'Declaração de Nepotismo'],
+  ]},
+  { titulo: '4.2 – Na DEMISSÃO, a CONTRATADA forneceu cópia de:', opcoes: 3, campos: [
+    ['trct', 'Termo de Rescisão do Contrato de Trabalho – TRCT'],
+    ['pagamento_trct', 'Comprovante de pagamento do TRCT'],
+    ['aviso_previo', 'Aviso Prévio e/ou Dispensa'],
+    ['aso_demissional', 'ASO Demissional'],
+    ['baixa_registro', 'Baixa no Registro de empregado'],
+    ['baixa_ctps', 'Baixa na CTPS'],
+    ['conectividade_social', 'Comprovante movimentação conectividade social'],
+    ['fgts_grrf', 'Comprovante recolhimento FGTS/GRRF rescisão'],
+    ['extrato_fgts', 'Extrato FGTS para fins rescisórios'],
+    ['seguro_desemprego', 'Comunicação de dispensa (Seguro-Desemprego)'],
+    ['jornada_rescisao', 'Folha de Controle de Jornada do mês da rescisão'],
+    ['caged_rescisao', 'CAGED – rescisão'],
+  ]},
+  { titulo: '4.3 – Na REALOCAÇÃO, a CONTRATADA forneceu cópia de:', opcoes: 3, campos: [
+    ['declaracao_realocacao', 'Declaração de realocação sem rescisão de contrato de trabalho'],
+  ]},
+  { titulo: '4.4 – Na ALTERAÇÃO DE FUNÇÃO, a CONTRATADA forneceu cópia de:', opcoes: 3, campos: [
+    ['ctps_funcao', 'CTPS – alteração de função'],
+    ['aso_funcao', 'ASO – Alteração de Função'],
+  ]},
+  { titulo: '5.1 – No INÍCIO do contrato, a CONTRATADA forneceu cópia de:', opcoes: 3, campos: [
+    ['formulario_terceirizados', 'Formulário de Controle de Empregados Terceirizados'],
+    ['nepotismo_inicio', 'Declaração de Nepotismo'],
+    ['relacao_empregados', 'Relação de empregados'],
+    ['ctps_inicio', 'CTPS dos empregados e responsáveis técnicos'],
+    ['declaracao_encargos', 'Declaração de responsabilidade exclusiva sobre encargos'],
+  ]},
+  { titulo: '5.2 – No INÍCIO do contrato, verificações:', opcoes: 3, campos: [
+    ['funcao_compativel', 'Função da CTPS compatível com a exercida'],
+    ['anotacoes_ctps', 'Anotações na CTPS coincidem com as fornecidas'],
+    ['inicio_coincide', 'Início do contrato de trabalho coincide com exercício na Contratante'],
+    ['remuneracao_compativel', 'Remuneração compatível com planilha de custos/CCT'],
+    ['numero_funcionarios', 'Número de funcionários coincide com o contratado'],
+    ['obrigacoes_adicionais', 'Obrigações adicionais da CCT observadas'],
+  ]},
+];
+const OPCOES_RESPOSTA = { 4: ['sim', 'parcial', 'nao', 'na'], 3: ['sim', 'nao', 'na'] };
+const ROTULO_RESPOSTA = { sim: 'Sim', parcial: 'Parcial', nao: 'Não', na: 'N/A' };
+
+function renderSecoesMaoObra() {
+  const el = document.getElementById('trdMoSecoes');
+  el.innerHTML = TRD_MO_SECOES.map(sec => `
+    <div class="mb-2">
+      <div class="fw-semibold small">${esc(sec.titulo)}</div>
+      ${sec.campos.map(([chave, rotulo]) => `
+        <div class="d-flex justify-content-between align-items-center small border-bottom py-1">
+          <span>${esc(rotulo)}</span>
+          <select class="form-select form-select-sm w-auto" onchange="window.atualizarRespostaMaoObra('${chave}', this.value)">
+            ${OPCOES_RESPOSTA[sec.opcoes].map(op => `<option value="${op}" ${respostasMaoObra[chave] === op ? 'selected' : ''}>${ROTULO_RESPOSTA[op]}</option>`).join('')}
+          </select>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+
+  const linhasTabela = (n, campos) => Array.from({ length: n }, (_, i) => `
+    <div class="row g-1 mb-1">
+      ${campos.map(([id, ph, largura]) => `<div class="col-auto"><input id="${id}${i + 1}" class="form-control form-control-sm" style="width:${largura}" placeholder="${ph}"></div>`).join('')}
+    </div>`).join('');
+  document.getElementById('trdMoNotificacoes').innerHTML = linhasTabela(5, [
+    ['trdMoNotifDesc', 'Descrição', '220px'], ['trdMoNotifData', 'Data', '110px'], ['trdMoNotifAtendeu', 'Atendeu? (Sim/Não)', '140px'],
+  ]);
+  document.getElementById('trdMoDocumentos').innerHTML = linhasTabela(5, [
+    ['trdMoDocTipo', 'Tipo de documento', '260px'], ['trdMoDocData', 'Data', '110px'],
+  ]);
+}
+
+function atualizarRespostaMaoObra(chave, valor) { respostasMaoObra[chave] = valor; }
 
 function atualizarCamposTRD() {
   const tipo = document.getElementById('trdTipo').value;
   document.getElementById('trdColEmpenho').style.display = tipo === 'TRD3' ? '' : 'none';
   document.getElementById('trdSecaoTRD').style.display = tipo === 'TRD3' ? 'block' : 'none';
+  document.getElementById('trdSecaoMaoObra').style.display = tipo === 'TRD2' ? 'block' : 'none';
+  // TRD2 (mão de obra) não lista itens de serviço/material — a tela de itens
+  // fica escondida, o corpo do documento é o checklist trabalhista.
+  document.getElementById('trdColItens').style.display = tipo === 'TRD2' ? 'none' : '';
+  if (tipo === 'TRD2' && !document.getElementById('trdMoSecoes').innerHTML) renderSecoesMaoObra();
   renderTheadTRD(tipo);
   renderTbodyTRD(tipo);
 }
@@ -529,7 +635,12 @@ async function gerarTRPouTRD() {
     }
   };
 
-  linha(tipo === 'TRP' ? 'TRP - Termo de Recebimento Provisório' : 'TRD - Termo de Recebimento Definitivo de Bens e/ou Prestação de Serviços Comuns', { size: 14, negrito: true, pular: 24 });
+  const titulos = {
+    TRP: 'TRP - Termo de Recebimento Provisório',
+    TRD3: 'TRD - Termo de Recebimento Definitivo de Bens e/ou Prestação de Serviços Comuns',
+    TRD2: 'TRD - Termo de Recebimento Definitivo de Prestação de Serviços (Fornecimento de Mão de Obra)',
+  };
+  linha(titulos[tipo], { size: 14, negrito: true, pular: 24 });
   linha('1 - IDENTIFICAÇÃO DO CONTRATO', { negrito: true });
   linha(`Contrato: ${c.numero_ano || '—'}`);
   linha(`Vigência: ${c.vigencia_inicio ? formatarDataISO(c.vigencia_inicio) : '—'} a ${c.vigencia_fim ? formatarDataISO(c.vigencia_fim) : '—'}`);
@@ -541,17 +652,75 @@ async function gerarTRPouTRD() {
   if (tipo === 'TRD3') linha(`Empenho: ${document.getElementById('trdEmpenho').value || '—'}`);
   y -= 6;
 
-  linha('2 - DETALHAMENTO DA EXECUÇÃO DO OBJETO', { negrito: true });
-  linha(`Descrição do objeto: ${c.objeto || '—'}`);
-  y -= 4;
-  itensTRDAtual.forEach((it, idx) => {
-    if (tipo === 'TRD3') {
-      linha(`${idx + 1}. ${it.item_descricao} — ${it.unidade || '—'} — Qtd: ${it.quantidade_contratada ?? '—'} — Valor: ${formatarMoeda(it.valorInformado)}${it.glosa ? ` — Glosa: ${formatarMoeda(it.glosa)}` : ''}`);
-    } else {
-      linha(`- ${it.item_descricao} — ${it.unidade || '—'} — Qtd: ${it.quantidade_contratada ?? '—'}`);
+  if (tipo !== 'TRD2') {
+    linha('2 - DETALHAMENTO DA EXECUÇÃO DO OBJETO', { negrito: true });
+    linha(`Descrição do objeto: ${c.objeto || '—'}`);
+    y -= 4;
+    itensTRDAtual.forEach((it, idx) => {
+      if (tipo === 'TRD3') {
+        linha(`${idx + 1}. ${it.item_descricao} — ${it.unidade || '—'} — Qtd: ${it.quantidade_contratada ?? '—'} — Valor: ${formatarMoeda(it.valorInformado)}${it.glosa ? ` — Glosa: ${formatarMoeda(it.glosa)}` : ''}`);
+      } else {
+        linha(`- ${it.item_descricao} — ${it.unidade || '—'} — Qtd: ${it.quantidade_contratada ?? '—'}`);
+      }
+    });
+    y -= 6;
+  }
+
+  if (tipo === 'TRD2') {
+    linha('2 - REGULARIDADE EM RELAÇÃO ÀS OBRIGAÇÕES TRABALHISTAS E SOCIAIS (Art. 50, Lei nº 14.133/2021)', { negrito: true });
+    linha('3 - MEDIDAS PARA ASSEGURAR O CUMPRIMENTO DE OBRIGAÇÕES TRABALHISTAS (Art. 121, §3º, Lei nº 14.133/2021)', { negrito: true });
+    TRD_MO_SECOES.forEach(sec => {
+      linha(sec.titulo, { negrito: true });
+      sec.campos.forEach(([chave, rotulo]) => {
+        linha(`${rotulo}: ${ROTULO_RESPOSTA[respostasMaoObra[chave] || 'na']}`);
+      });
+      y -= 4;
+    });
+
+    linha('3.2 CONDIÇÕES DE HABILITAÇÃO JURÍDICA', { negrito: true });
+    const respGeral = { sim: 'Sim', nao: 'Não', na: 'N/A' };
+    linha(`Mantém regularidade fiscal/trabalhista e inc. XXXIII art. 7º CF/88? ${respGeral[document.getElementById('trdMoHabGeral').value]}`);
+    linha('Documentação:', { negrito: true });
+    const { data: certidoesMo } = await supabase.from('certidoes_contrato').select('*').eq('contrato_id', c.id);
+    const porTipoMo = {}; (certidoesMo || []).forEach(x => { porTipoMo[x.tipo] = x; });
+    [['PGFN', 'Certidão Conjunta Receita Federal/PGFN'], ['ESTADUAL', 'Certidão Regularidade Fazenda Estadual'],
+     ['MUNICIPAL', 'Certidão Regularidade Fazenda Municipal'], ['FGTS', 'Certidão Regularidade FGTS (CRF)'],
+     ['CNDT', 'Certidão Débitos Trabalhistas (CNDT)'], ['DECLARACAO_MENOR', 'Declaração art. 7º, XXXIII, CF/88']].forEach(([t, rotulo]) => {
+      const cert = porTipoMo[t];
+      linha(`${rotulo}: nº ${cert?.numero || '—'} — validade ${cert?.data_validade ? formatarDataISO(cert.data_validade) : '—'}`);
+    });
+    y -= 6;
+
+    linha('6 - REGULARIDADE TRABALHISTA: TÉRMINO DO CONTRATO (quando aplicável, mesma documentação da seção 4.2)', { negrito: true });
+    const obsSec6 = document.getElementById('trdMoObsSec6').value;
+    if (obsSec6) linha(`Obs.: ${obsSec6}`);
+    y -= 4;
+
+    linha('7 - NOTIFICAÇÕES REALIZADAS NO PERÍODO', { negrito: true });
+    let temNotif = false;
+    for (let i = 1; i <= 5; i++) {
+      const desc = document.getElementById(`trdMoNotifDesc${i}`)?.value;
+      if (!desc) continue;
+      temNotif = true;
+      const data = document.getElementById(`trdMoNotifData${i}`)?.value || '—';
+      const atendeu = document.getElementById(`trdMoNotifAtendeu${i}`)?.value || '—';
+      linha(`${i}. ${desc} — ${data} — Atendeu: ${atendeu}`);
     }
-  });
-  y -= 6;
+    if (!temNotif) linha('Nenhuma notificação registrada no período.');
+    y -= 4;
+
+    linha('8 - JUNTADA DE DOCUMENTOS COMPROBATÓRIOS', { negrito: true });
+    let temDoc = false;
+    for (let i = 1; i <= 5; i++) {
+      const tipoDoc = document.getElementById(`trdMoDocTipo${i}`)?.value;
+      if (!tipoDoc) continue;
+      temDoc = true;
+      const data = document.getElementById(`trdMoDocData${i}`)?.value || '—';
+      linha(`${i}. ${tipoDoc} — ${data}`);
+    }
+    if (!temDoc) linha('Nenhum documento adicional juntado.');
+    y -= 6;
+  }
 
   if (tipo === 'TRD3') {
     const conf = { sim: 'Sim', parcial: 'Parcialmente', nao: 'Não' }[document.getElementById('trdConformidade').value];
@@ -1428,6 +1597,7 @@ window.carregarItensTRD = carregarItensTRD;
 window.atualizarValorItemTRD = atualizarValorItemTRD;
 window.atualizarGlosaItemTRD = atualizarGlosaItemTRD;
 window.gerarTRPouTRD = gerarTRPouTRD;
+window.atualizarRespostaMaoObra = atualizarRespostaMaoObra;
 window.abrirEventoNoContrato = abrirEventoNoContrato;
 window.irParaEvento = irParaEvento;
 window.filtrarPainel = filtrarPainel;

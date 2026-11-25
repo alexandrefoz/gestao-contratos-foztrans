@@ -1,5 +1,12 @@
 # Changelog
 
+## 25/11/2026 (continuação) — TRD Anexo II (mão de obra) completo
+
+- Construído o terceiro e último modelo: TRD — Fornecimento de Mão de Obra (Rheitor, Liderança — dedicação exclusiva). 44 itens de conformidade trabalhista (Art. 50 e Art. 121 §3º, Lei 14.133/2021), gerados dinamicamente a partir de uma config (`TRD_MO_SECOES`) em vez de escritos campo a campo no HTML — seções 2.1, 3.1, 4.1 (admissão), 4.2 (demissão), 4.3 (realocação), 4.4 (alteração de função), 5.1/5.2 (início do contrato), cada item com Sim/Parcial/Não/N.A. (alguns sem "Parcial", conforme o template real).
+- Seção 3.2 (habilitação jurídica) reaproveita `certidoes_contrato`, incluindo a 6ª certidão (Declaração art. 7º XXXIII) que o TRD3 não usa.
+- Seções 7 (notificações) e 8 (documentos comprobatórios) com até 5 linhas cada, entrada manual.
+- Com isso, os 3 modelos reais do sistema antigo (TRP, TRD Bens/Serviços, TRD Mão de Obra) estão migrados — cobre todos os contratos vigentes.
+
 ## 25/11/2026 (continuação) — TRP e TRD (Bens/Serviços) gerados como PDF no navegador
 
 - Templates reais do TRP/TRD (Anexo I, II, III) extraídos direto do Google Docs do sistema antigo via `export?format=txt` (o editor renderiza em canvas, não dava pra ler como texto normal — exportar contornou isso). Confirma citação legal real: art. 2º (TRP) e art. 3º (TRD) da Instrução Normativa nº 7/2026.
