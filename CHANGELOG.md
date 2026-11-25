@@ -1,5 +1,12 @@
 # Changelog
 
+## 24/11/2026 (continuação) — Gerador de texto por etapa do checklist (generalizado)
+
+- Ideia do usuário: cada etapa do checklist poder ter um texto padrão associado, pra acelerar o processo. Implementado como `checklist_modelo.chave_modelo` (coluna nova) + um registro de geradores em JS (`GERADORES_TEXTO`) — etapa com chave reconhecida ganha um botão "📄 gerar texto" direto na linha do checklist do evento.
+- 5 das 11 etapas do checklist de **reajuste** mapeadas (únicas com conteúdo validado contra processo real até agora): `memorando_abertura`, `despacho_daf`, `autorizacao`, `solicitacao_contabilidade`, `termo_apostilamento`. As outras 6 (certidões, publicação, lançamento no OXY etc.) não geram texto — são anexo, resultado de terceiro ou passo sem documento.
+- **Termo de Apostilamento** é o gerador mais valioso: reaproveita o resultado já calculado no card de reajuste (percentual, índice, período, tabela de itens com valor unitário antigo/novo) — some se o usuário ainda não rodou o cálculo.
+- Outros tipos de evento (prorrogação, repactuação etc.) ainda não têm texto de etapa — ficam com aviso de "modelo não validado" em vez de texto inventado.
+
 ## 24/11/2026 (continuação) — Texto padrão de Memorando/Autorização
 
 - Vista a íntegra do processo real de reajuste da Moving Tech (83 páginas, processo 42.026/2026): confirma que a "Autorização" (bi-assinada por Superintendente + DAF) é emitida direto na plataforma de assinatura da Prefeitura (SID/OXY, `sistemas.pmfi.pr.gov.br`), não pelo nosso sistema nem pelo "Emissão de Termos" — não há nada para gerar/reconstruir ali, só anexar o PDF já assinado no checklist.

@@ -550,7 +550,7 @@ async function selecionarEvento(id) {
 
   const { data, error } = await supabase
     .from('checklist_exec')
-    .select('*')
+    .select('*, checklist_modelo(chave_modelo)')
     .eq('evento_id', id)
     .order('ordem');
   if (error) { alert('Erro ao carregar checklist do evento: ' + error.message); return; }
@@ -580,11 +580,12 @@ function renderChecklistExec() {
   const el = document.getElementById('lista-checklist-exec');
   el.innerHTML = checklistExecAtual.map(c => {
     const anexos = anexosPorItem[c.id] || [];
+    const chaveModelo = c.checklist_modelo?.chave_modelo;
     return `
     <div class="card mb-2">
       <div class="card-body py-2">
         <div class="d-flex justify-content-between align-items-start">
-          <div class="fw-semibold">${c.ordem}. ${esc(c.etapa)} ${c.bloqueante ? '<span class="badge badge-bloqueante">bloqueante</span>' : ''} ${c.exige_anexo ? '<span class="badge badge-anexo">exige anexo</span>' : ''}</div>
+          <div class="fw-semibold">${c.ordem}. ${esc(c.etapa)} ${c.bloqueante ? '<span class="badge badge-bloqueante">bloqueante</span>' : ''} ${c.exige_anexo ? '<span class="badge badge-anexo">exige anexo</span>' : ''} ${chaveModelo && GERADORES_TEXTO[chaveModelo] ? `<button class="btn btn-sm btn-outline-primary py-0 px-1" style="font-size:11px" onclick="window.gerarTextoEtapa('${chaveModelo}')" title="Gerar texto padrão desta etapa">📄 gerar texto</button>` : ''}</div>
           <select class="form-select form-select-sm w-auto" onchange="window.atualizarCampoExec('${c.id}','status',this.value)">
             ${['pendente','em_andamento','concluida','nao_se_aplica'].map(s =>
               `<option value="${s}" ${c.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
@@ -643,32 +644,106 @@ const FINALIDADE_POR_TIPO = {
   aditivo_generico: 'o processamento de termo aditivo contratual',
 };
 
-function gerarTextoAutorizacao() {
-  const c = eventoAtual.contratos || {};
-  const tipo = eventoAtual.tipos_evento?.tipo;
-  const tipoDoc = document.getElementById('tipoDocumentoTexto').value;
+function _textoMemorandoAbertura(c, tipo, rotulo) {
   const finalidade = FINALIDADE_POR_TIPO[tipo] || 'o processamento do presente evento contratual';
-  const hoje = new Date().toLocaleDateString('pt-BR');
-  const out = document.getElementById('textoAutorizacao');
-
-  if (tipoDoc === 'autorizacao') {
-    out.value = `Fica autorizada a abertura e instrução de processo administrativo vinculado ao Contrato nº ${c.numero_ano || '[CONTRATO]'}, que tem como objeto ${c.objeto || '[OBJETO]'}, que será prestado nas condições estabelecidas no Termo de Referência, e como contratada a empresa ${c.contratada || '[CONTRATADA]'}${c.cnpj ? ', CNPJ: ' + c.cnpj : ''}, visando ${finalidade}.\n\nFoz do Iguaçu – PR, ${hoje}.`;
-    return;
-  }
-
   const justificativa = JUSTIFICATIVA_POR_TIPO[tipo]
     ? JUSTIFICATIVA_POR_TIPO[tipo](c)
-    : `[Descrever aqui a necessidade e fundamentação legal específica deste evento — tipo "${eventoAtual.tipos_evento?.rotulo || tipo}" ainda não tem modelo de texto validado contra processo real. Não preencher de forma automática.]`;
-
-  out.value = `MEMORANDO INTERNO\n` +
+    : `[Descrever aqui a necessidade e fundamentação legal específica deste evento — tipo "${rotulo || tipo}" ainda não tem modelo de texto validado contra processo real. Não preencher de forma automática.]`;
+  return `MEMORANDO INTERNO\n` +
     `Destinatário: FOZTRANS - SUPERINTENDÊNCIA; FOZTRANS / DAF - DIRETORIA ADMINISTRATIVA E FINANCEIRA.\n` +
-    `Assunto: ABERTURA DE PROCESSO ADMINISTRATIVO - ${(eventoAtual.tipos_evento?.rotulo || '').toUpperCase()} CONTRATO N.º ${c.numero_ano || '[CONTRATO]'} - ${c.contratada || '[CONTRATADA]'}\n` +
-    `Data: ${hoje}\n\n` +
+    `Assunto: ABERTURA DE PROCESSO ADMINISTRATIVO - ${(rotulo || '').toUpperCase()} CONTRATO N.º ${c.numero_ano || '[CONTRATO]'} - ${c.contratada || '[CONTRATADA]'}\n` +
+    `Data: ${new Date().toLocaleDateString('pt-BR')}\n\n` +
     `Prezado Diretor Superintendente,\n\n` +
     `1. DA NECESSIDADE E FUNDAMENTAÇÃO\n${justificativa}\n\n` +
     `2. DA SOLICITAÇÃO\n` +
     `Na qualidade de Gestor do Contrato, solicito autorização para abertura do processo administrativo de ${finalidade}, para os trâmites internos.\n\n` +
     `Atenciosamente,`;
+}
+
+function _textoAutorizacao(c, tipo) {
+  const finalidade = FINALIDADE_POR_TIPO[tipo] || 'o processamento do presente evento contratual';
+  return `Fica autorizada a abertura e instrução de processo administrativo vinculado ao Contrato nº ${c.numero_ano || '[CONTRATO]'}, que tem como objeto ${c.objeto || '[OBJETO]'}, que será prestado nas condições estabelecidas no Termo de Referência, e como contratada a empresa ${c.contratada || '[CONTRATADA]'}${c.cnpj ? ', CNPJ: ' + c.cnpj : ''}, visando ${finalidade}.\n\nFoz do Iguaçu – PR, ${new Date().toLocaleDateString('pt-BR')}.`;
+}
+
+function _textoDespachoDAF(c, tipo, rotulo) {
+  return `PREZADO GESTOR,\n\n` +
+    `SOLICITO QUE DÊ CONTINUIDADE À FORMULAÇÃO DO ${(rotulo || 'EVENTO').toUpperCase()} CONTRATUAL, COM A DEVIDA ANÁLISE TÉCNICA A SER REALIZADA PELA DIVISÃO DE LICITAÇÕES (TERMO) E PELA CONTABILIDADE (PARECER TÉCNICO, QUANDO APLICÁVEL).\n\n` +
+    `DETERMINO, AINDA, QUE TODA A TRAMITAÇÃO SEJA REALIZADA VIA MÓDULO PROCESSO DIGITAL, NO SISTEMA OXY.\n\n` +
+    `ATENCIOSAMENTE,`;
+}
+
+function _textoSolicitacaoContabilidade(c, tipo) {
+  if (tipo !== 'reajuste') {
+    return `Prezado Contador.\n\nSolicito a elaboração de memória de cálculo para fins de instrução do processo de ${FINALIDADE_POR_TIPO[tipo] || 'evento contratual'} do Contrato nº ${c.numero_ano || '[CONTRATO]'}, firmado com a empresa ${c.contratada || '[CONTRATADA]'}, cujo objeto é ${c.objeto || '[OBJETO]'}.\n\n[Descrever aqui o que exatamente precisa ser calculado — modelo ainda não validado contra processo real para este tipo de evento.]\n\nSem mais,`;
+  }
+  return `Prezado Contador.\n\n` +
+    `Solicito a elaboração de memória de cálculo para fins de instrução do processo de reajuste anual do Contrato nº ${c.numero_ano || '[CONTRATO]'}, firmado com a empresa ${c.contratada || '[CONTRATADA]'}, cujo objeto é ${c.objeto || '[OBJETO]'}.\n\n` +
+    `Com base na Cláusula de reajuste do contrato, solicito:\n` +
+    `a) Variação do índice aplicável: apuração do índice acumulado no período correspondente;\n` +
+    `b) Atualização dos valores: aplicação do índice sobre os preços unitários vigentes.\n\n` +
+    `Sem mais,`;
+}
+
+function _textoTermoApostilamento(c, tipo) {
+  if (tipo !== 'reajuste') {
+    return `[Modelo de Termo de Apostilamento ainda não construído para o tipo "${tipo}" — só validado para reajuste até agora. Use o texto do(s) processo(s) reais como referência.]`;
+  }
+  if (!memoriaReajusteAtual) {
+    return '[Calcule o reajuste no card "Cálculo de reajuste" acima primeiro — o termo usa o percentual e a tabela de itens de lá.]';
+  }
+  const m = memoriaReajusteAtual;
+  const percentual = ((m.fatorFinal - 1) * 100).toFixed(4).replace('.', ',');
+  const hoje = new Date();
+  const periodoIni = m.dataBase.split('-').reverse().join('/');
+  const periodoFim = m.dataRef.split('-').reverse().join('/');
+
+  let tabela;
+  if (m.modo === 'itens') {
+    tabela = m.itens.map(it =>
+      `${it.item} — ${it.item_descricao}: de ${formatarMoeda(it.valor_unitario)} para ${formatarMoeda(it.valorUnitarioNovo)}`
+    ).join('\n');
+  } else {
+    tabela = `Valor de R$ ${formatarMoeda(m.base)} para ${formatarMoeda(m.valorNovo)}`;
+  }
+
+  return `TERMO DE APOSTILAMENTO\n\n` +
+    `Ao CONTRATO Nº ${c.numero_ano || '[CONTRATO]'}, celebrado entre o FOZTRANS e a ${c.contratada || '[CONTRATADA]'}, que tem por objeto ${c.objeto || '[OBJETO]'}.\n\n` +
+    `O FOZTRANS - Instituto de Transportes Trânsito de Foz do Iguaçu, autarquia pública, com sede na cidade de Foz do Iguaçu, na Rua Edgard Schimmelpfeng, 43, Centro Cívico, com CNPJ nº 02.345.707/0001-65, neste ato representado por seu(sua) Diretor(a) Superintendente e por seu(sua) Diretor(a) Administrativo(a) e Financeiro(a), resolvem apostilar o Contrato nº ${c.numero_ano || '[CONTRATO]'}, mediante as seguintes Cláusulas.\n\n` +
+    `CLÁUSULA PRIMEIRA\n` +
+    `Em conformidade com as regras contratuais, reajustam-se os valores unitários dos itens contratados no percentual de ${percentual}%, decorrente da variação do ${m.serie}, apurado no acumulado de ${periodoIni} a ${periodoFim}.\n\n` +
+    `CLÁUSULA SEGUNDA\n` +
+    `Com o reajuste, os valores passam a vigorar conforme detalhamento a seguir:\n${tabela}\n\n` +
+    `CLÁUSULA TERCEIRA\n` +
+    `Ficam mantidas as demais Cláusulas e condições constantes do Contrato original, não expressamente alteradas por este Termo.\n\n` +
+    `Foz do Iguaçu, ${hoje.toLocaleDateString('pt-BR')} (data de assinatura no sistema).`;
+}
+
+// Registro: chave_modelo (vindo de checklist_modelo) → gerador de texto.
+const GERADORES_TEXTO = {
+  memorando_abertura: (c, tipo, rotulo) => _textoMemorandoAbertura(c, tipo, rotulo),
+  autorizacao: (c, tipo) => _textoAutorizacao(c, tipo),
+  despacho_daf: (c, tipo, rotulo) => _textoDespachoDAF(c, tipo, rotulo),
+  solicitacao_contabilidade: (c, tipo) => _textoSolicitacaoContabilidade(c, tipo),
+  termo_apostilamento: (c, tipo) => _textoTermoApostilamento(c, tipo),
+};
+
+function gerarTextoEtapa(chaveModelo) {
+  const c = eventoAtual.contratos || {};
+  const tipo = eventoAtual.tipos_evento?.tipo;
+  const rotulo = eventoAtual.tipos_evento?.rotulo;
+  const gerador = GERADORES_TEXTO[chaveModelo];
+  if (!gerador) return;
+  document.getElementById('textoAutorizacao').value = gerador(c, tipo, rotulo);
+  document.getElementById('textoAutorizacao').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function gerarTextoAutorizacao() {
+  const c = eventoAtual.contratos || {};
+  const tipo = eventoAtual.tipos_evento?.tipo;
+  const rotulo = eventoAtual.tipos_evento?.rotulo;
+  const tipoDoc = document.getElementById('tipoDocumentoTexto').value;
+  const chave = tipoDoc === 'autorizacao' ? 'autorizacao' : 'memorando_abertura';
+  document.getElementById('textoAutorizacao').value = GERADORES_TEXTO[chave](c, tipo, rotulo);
 }
 
 function copiarTextoAutorizacao() {
@@ -1060,6 +1135,7 @@ window.excluirEtapa = excluirEtapa;
 window.carregarEventos = carregarEventos;
 window.selecionarEvento = selecionarEvento;
 window.gerarTextoAutorizacao = gerarTextoAutorizacao;
+window.gerarTextoEtapa = gerarTextoEtapa;
 window.copiarTextoAutorizacao = copiarTextoAutorizacao;
 window.calcularReajuste = calcularReajuste;
 window.aplicarReajuste = aplicarReajuste;
