@@ -1,5 +1,14 @@
 # Changelog
 
+## 25/11/2026 (continuação 2) — TRP/TRD: itens não carregam mais automaticamente do contrato
+
+- Correção de design apontada pelo usuário: alguns contratos têm centenas de itens cadastrados, mas numa requisição/OS real só um ou dois são efetivamente pedidos. Carregar os itens do contrato automaticamente (mesmo limitando a 10) jogava itens não solicitados pro TRP/TRD.
+- A requisição e a ordem de serviço continuam sendo feitas no sistema da Elotech — não faz sentido reconstruir isso aqui. O que muda é como a tela trata a lista de itens do TRP/TRD:
+  - Troca de contrato não carrega mais nada automaticamente; a lista de itens começa vazia.
+  - Botão "Carregar todos os itens do contrato" (antigo "Carregar itens do contrato") continua disponível, mas como atalho opcional — útil só quando o contrato tem poucos itens.
+  - Novo botão "+ item" é o caminho principal: adiciona uma linha vazia pra digitar exatamente o que está na requisição/OS (descrição, unidade e quantidade agora são campos editáveis, não só valor/glosa). Cada linha tem botão de remover.
+  - Texto explicativo na tela: "Só os itens realmente pedidos na requisição/OS devem entrar aqui — não o contrato inteiro."
+
 ## 25/11/2026 (continuação) — TRD Anexo II (mão de obra) completo
 
 - Construído o terceiro e último modelo: TRD — Fornecimento de Mão de Obra (Rheitor, Liderança — dedicação exclusiva). 44 itens de conformidade trabalhista (Art. 50 e Art. 121 §3º, Lei 14.133/2021), gerados dinamicamente a partir de uma config (`TRD_MO_SECOES`) em vez de escritos campo a campo no HTML — seções 2.1, 3.1, 4.1 (admissão), 4.2 (demissão), 4.3 (realocação), 4.4 (alteração de função), 5.1/5.2 (início do contrato), cada item com Sim/Parcial/Não/N.A. (alguns sem "Parcial", conforme o template real).

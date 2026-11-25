@@ -563,18 +563,18 @@ function atualizarCamposTRD() {
   if (tipo === 'TRD2' && !document.getElementById('trdMoSecoes').innerHTML) renderSecoesMaoObra();
   renderTheadTRD(tipo);
   renderTbodyTRD(tipo);
-  // Carrega os itens sozinho — antes só carregava se o usuário clicasse no
-  // botão, e passava despercebido que o TRP/TRD saía sem nenhum item.
-  if (tipo !== 'TRD2' && contratoSelecionadoId && !itensTRDAtual.length) carregarItensTRD();
 }
 
 function renderTheadTRD(tipo) {
   document.getElementById('trdTheadItens').innerHTML = tipo === 'TRD3'
-    ? '<tr><th>Seq</th><th>Descrição</th><th>Métrica</th><th>Qtd</th><th>Valor (R$)</th><th>Glosa</th></tr>'
-    : '<tr><th>Descrição</th><th>Métrica</th><th>Qtd</th></tr>';
+    ? '<tr><th>Seq</th><th>Descrição</th><th>Métrica</th><th>Qtd</th><th>Valor (R$)</th><th>Glosa</th><th></th></tr>'
+    : '<tr><th>Descrição</th><th>Métrica</th><th>Qtd</th><th></th></tr>';
 }
 
 async function carregarItensTRD() {
+  // Só um ponto de partida (todos os itens do contrato) — a requisição/OS
+  // real (feita no Elotech) pode cobrir só alguns itens com outra
+  // quantidade, por isso a tabela é editável e o usuário ajusta depois.
   if (!contratoSelecionadoId) return;
   const { data, error } = await supabase
     .from('itens_contrato_saldo')
@@ -586,32 +586,49 @@ async function carregarItensTRD() {
   itensTRDAtual = (data || [])
     .filter(i => i.data_referencia === maisRecente)
     .slice(0, 10)
-    .map(i => ({ ...i, valorInformado: i.valor_contratado, glosa: 0 }));
-  if (!itensTRDAtual.length) {
-    document.getElementById('trdTbodyItens').innerHTML = '<tr><td colspan="6" class="text-muted small">Nenhum item cadastrado pra este contrato ainda (ver seção "itens_contrato_saldo") — preencha manualmente no PDF depois de gerar, ou cadastre os itens primeiro.</td></tr>';
-    return;
-  }
+    .map(i => ({ item_descricao: i.item_descricao, unidade: i.unidade, quantidade_contratada: i.quantidade_contratada, valorInformado: i.valor_contratado, glosa: 0 }));
   renderTbodyTRD(document.getElementById('trdTipo').value);
 }
 
+function adicionarItemTRD() {
+  if (itensTRDAtual.length >= 10) { alert('Máximo de 10 itens no modelo de TRP/TRD.'); return; }
+  itensTRDAtual.push({ item_descricao: '', unidade: '', quantidade_contratada: '', valorInformado: 0, glosa: 0 });
+  renderTbodyTRD(document.getElementById('trdTipo').value);
+}
+
+function removerItemTRD(idx) {
+  itensTRDAtual.splice(idx, 1);
+  renderTbodyTRD(document.getElementById('trdTipo').value);
+}
+
+function atualizarCampoItemTRD(idx, campo, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx][campo] = valor; }
+
 function renderTbodyTRD(tipo) {
   const el = document.getElementById('trdTbodyItens');
-  if (!itensTRDAtual.length) return;
+  if (!itensTRDAtual.length) { el.innerHTML = '<tr><td colspan="6" class="text-muted small">Nenhum item ainda — "Carregar itens do contrato" (ponto de partida) ou "+ item" pra digitar o que está na requisição/OS.</td></tr>'; return; }
   el.innerHTML = itensTRDAtual.map((it, idx) => tipo === 'TRD3'
     ? `<tr>
         <td class="small">${idx + 1}</td>
-        <td class="small">${esc(it.item_descricao)}</td>
-        <td class="small">${esc(it.unidade || '—')}</td>
-        <td class="small">${it.quantidade_contratada ?? '—'}</td>
+        <td><input class="form-control form-control-sm" style="width:200px" value="${esc(it.item_descricao || '')}"
+          onblur="window.atualizarCampoItemTRD(${idx},'item_descricao',this.value)"></td>
+        <td><input class="form-control form-control-sm" style="width:70px" value="${esc(it.unidade || '')}"
+          onblur="window.atualizarCampoItemTRD(${idx},'unidade',this.value)"></td>
+        <td><input class="form-control form-control-sm" style="width:60px" value="${it.quantidade_contratada ?? ''}"
+          onblur="window.atualizarCampoItemTRD(${idx},'quantidade_contratada',this.value)"></td>
         <td><input class="form-control form-control-sm" style="width:100px" value="${it.valorInformado}"
           onblur="window.atualizarValorItemTRD(${idx}, this.value)"></td>
         <td><input class="form-control form-control-sm" style="width:80px" value="${it.glosa}"
           onblur="window.atualizarGlosaItemTRD(${idx}, this.value)"></td>
+        <td><button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="window.removerItemTRD(${idx})">✕</button></td>
       </tr>`
     : `<tr>
-        <td class="small">${esc(it.item_descricao)}</td>
-        <td class="small">${esc(it.unidade || '—')}</td>
-        <td class="small">${it.quantidade_contratada ?? '—'}</td>
+        <td><input class="form-control form-control-sm" style="width:220px" value="${esc(it.item_descricao || '')}"
+          onblur="window.atualizarCampoItemTRD(${idx},'item_descricao',this.value)"></td>
+        <td><input class="form-control form-control-sm" style="width:80px" value="${esc(it.unidade || '')}"
+          onblur="window.atualizarCampoItemTRD(${idx},'unidade',this.value)"></td>
+        <td><input class="form-control form-control-sm" style="width:70px" value="${it.quantidade_contratada ?? ''}"
+          onblur="window.atualizarCampoItemTRD(${idx},'quantidade_contratada',this.value)"></td>
+        <td><button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="window.removerItemTRD(${idx})">✕</button></td>
       </tr>`
   ).join('');
 }
@@ -1597,6 +1614,9 @@ window.baixarCertidao = baixarCertidao;
 window.excluirArquivoCertidao = excluirArquivoCertidao;
 window.atualizarCamposTRD = atualizarCamposTRD;
 window.carregarItensTRD = carregarItensTRD;
+window.adicionarItemTRD = adicionarItemTRD;
+window.removerItemTRD = removerItemTRD;
+window.atualizarCampoItemTRD = atualizarCampoItemTRD;
 window.atualizarValorItemTRD = atualizarValorItemTRD;
 window.atualizarGlosaItemTRD = atualizarGlosaItemTRD;
 window.gerarTRPouTRD = gerarTRPouTRD;
