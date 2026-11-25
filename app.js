@@ -563,6 +563,9 @@ function atualizarCamposTRD() {
   if (tipo === 'TRD2' && !document.getElementById('trdMoSecoes').innerHTML) renderSecoesMaoObra();
   renderTheadTRD(tipo);
   renderTbodyTRD(tipo);
+  // Carrega os itens sozinho — antes só carregava se o usuário clicasse no
+  // botão, e passava despercebido que o TRP/TRD saía sem nenhum item.
+  if (tipo !== 'TRD2' && contratoSelecionadoId && !itensTRDAtual.length) carregarItensTRD();
 }
 
 function renderTheadTRD(tipo) {
