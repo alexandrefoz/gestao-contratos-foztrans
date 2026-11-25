@@ -365,6 +365,10 @@ async function selecionarContrato(id) {
   `).join('') || '<div class="text-muted small">Nenhum evento ainda neste contrato.</div>';
 
   await carregarCertidoes(id);
+
+  itensTRDAtual = [];
+  document.getElementById('trdTbodyItens').innerHTML = '';
+  atualizarCamposTRD();
 }
 
 // -------------------------------------------------------------- certidões
@@ -442,6 +446,164 @@ async function baixarCertidao(tipo) {
   const { data, error } = await supabase.storage.from(BUCKET_CERTIDOES).createSignedUrl(c.caminho_storage, 60);
   if (error) { alert('Erro ao gerar link: ' + error.message); return; }
   window.open(data.signedUrl, '_blank');
+}
+
+// -------------------------------------------------------------- TRP/TRD
+let itensTRDAtual = [];
+
+function atualizarCamposTRD() {
+  const tipo = document.getElementById('trdTipo').value;
+  document.getElementById('trdColEmpenho').style.display = tipo === 'TRD3' ? '' : 'none';
+  document.getElementById('trdSecaoTRD').style.display = tipo === 'TRD3' ? 'block' : 'none';
+  renderTheadTRD(tipo);
+  renderTbodyTRD(tipo);
+}
+
+function renderTheadTRD(tipo) {
+  document.getElementById('trdTheadItens').innerHTML = tipo === 'TRD3'
+    ? '<tr><th>Seq</th><th>Descrição</th><th>Métrica</th><th>Qtd</th><th>Valor (R$)</th><th>Glosa</th></tr>'
+    : '<tr><th>Descrição</th><th>Métrica</th><th>Qtd</th></tr>';
+}
+
+async function carregarItensTRD() {
+  if (!contratoSelecionadoId) return;
+  const { data, error } = await supabase
+    .from('itens_contrato_saldo')
+    .select('*')
+    .eq('contrato_id', contratoSelecionadoId)
+    .order('data_referencia', { ascending: false });
+  if (error) { alert('Erro ao buscar itens: ' + error.message); return; }
+  const maisRecente = data && data.length ? data[0].data_referencia : null;
+  itensTRDAtual = (data || [])
+    .filter(i => i.data_referencia === maisRecente)
+    .slice(0, 10)
+    .map(i => ({ ...i, valorInformado: i.valor_contratado, glosa: 0 }));
+  if (!itensTRDAtual.length) {
+    document.getElementById('trdTbodyItens').innerHTML = '<tr><td colspan="6" class="text-muted small">Nenhum item cadastrado pra este contrato ainda (ver seção "itens_contrato_saldo") — preencha manualmente no PDF depois de gerar, ou cadastre os itens primeiro.</td></tr>';
+    return;
+  }
+  renderTbodyTRD(document.getElementById('trdTipo').value);
+}
+
+function renderTbodyTRD(tipo) {
+  const el = document.getElementById('trdTbodyItens');
+  if (!itensTRDAtual.length) return;
+  el.innerHTML = itensTRDAtual.map((it, idx) => tipo === 'TRD3'
+    ? `<tr>
+        <td class="small">${idx + 1}</td>
+        <td class="small">${esc(it.item_descricao)}</td>
+        <td class="small">${esc(it.unidade || '—')}</td>
+        <td class="small">${it.quantidade_contratada ?? '—'}</td>
+        <td><input class="form-control form-control-sm" style="width:100px" value="${it.valorInformado}"
+          onblur="window.atualizarValorItemTRD(${idx}, this.value)"></td>
+        <td><input class="form-control form-control-sm" style="width:80px" value="${it.glosa}"
+          onblur="window.atualizarGlosaItemTRD(${idx}, this.value)"></td>
+      </tr>`
+    : `<tr>
+        <td class="small">${esc(it.item_descricao)}</td>
+        <td class="small">${esc(it.unidade || '—')}</td>
+        <td class="small">${it.quantidade_contratada ?? '—'}</td>
+      </tr>`
+  ).join('');
+}
+
+function atualizarValorItemTRD(idx, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx].valorInformado = Number(valor.replace(',', '.')) || 0; }
+function atualizarGlosaItemTRD(idx, valor) { if (itensTRDAtual[idx]) itensTRDAtual[idx].glosa = Number(valor.replace(',', '.')) || 0; }
+
+async function gerarTRPouTRD() {
+  const c = contratos.find(x => x.id === contratoSelecionadoId);
+  if (!c) return;
+  const tipo = document.getElementById('trdTipo').value;
+  const doc = await PDFDocument.create();
+  const fonte = await doc.embedFont(StandardFonts.Helvetica);
+  const fonteNeg = await doc.embedFont(StandardFonts.HelveticaBold);
+  const margem = 50, largura = 595.28, altura = 841.89;
+  let pagina = doc.addPage([largura, altura]);
+  let y = altura - margem;
+
+  const linha = (texto, { size = 10, negrito = false, pular = 14, cor = rgb(0, 0, 0) } = {}) => {
+    if (y < margem + 20) { pagina = doc.addPage([largura, altura]); y = altura - margem; }
+    for (const l of quebrarLinhas(texto, negrito ? fonteNeg : fonte, size, largura - margem * 2)) {
+      pagina.drawText(l, { x: margem, y, size, font: negrito ? fonteNeg : fonte, color: cor });
+      y -= pular;
+    }
+  };
+
+  linha(tipo === 'TRP' ? 'TRP - Termo de Recebimento Provisório' : 'TRD - Termo de Recebimento Definitivo de Bens e/ou Prestação de Serviços Comuns', { size: 14, negrito: true, pular: 24 });
+  linha('1 - IDENTIFICAÇÃO DO CONTRATO', { negrito: true });
+  linha(`Contrato: ${c.numero_ano || '—'}`);
+  linha(`Vigência: ${c.vigencia_inicio ? formatarDataISO(c.vigencia_inicio) : '—'} a ${c.vigencia_fim ? formatarDataISO(c.vigencia_fim) : '—'}`);
+  linha(`Contratante: FOZTRANS - Instituto de Transportes e Trânsito de Foz do Iguaçu`);
+  linha(`Contratada: ${c.contratada || '—'}`);
+  linha(`Ordem de Serviço: ${document.getElementById('trdOrdemServico').value || '—'}`);
+  linha(`Nota Fiscal nº: ${document.getElementById('trdNotaFiscal').value || '—'}`);
+  linha(`Período de referência: ${document.getElementById('trdPeriodoRef').value || '—'}`);
+  if (tipo === 'TRD3') linha(`Empenho: ${document.getElementById('trdEmpenho').value || '—'}`);
+  y -= 6;
+
+  linha('2 - DETALHAMENTO DA EXECUÇÃO DO OBJETO', { negrito: true });
+  linha(`Descrição do objeto: ${c.objeto || '—'}`);
+  y -= 4;
+  itensTRDAtual.forEach((it, idx) => {
+    if (tipo === 'TRD3') {
+      linha(`${idx + 1}. ${it.item_descricao} — ${it.unidade || '—'} — Qtd: ${it.quantidade_contratada ?? '—'} — Valor: ${formatarMoeda(it.valorInformado)}${it.glosa ? ` — Glosa: ${formatarMoeda(it.glosa)}` : ''}`);
+    } else {
+      linha(`- ${it.item_descricao} — ${it.unidade || '—'} — Qtd: ${it.quantidade_contratada ?? '—'}`);
+    }
+  });
+  y -= 6;
+
+  if (tipo === 'TRD3') {
+    const conf = { sim: 'Sim', parcial: 'Parcialmente', nao: 'Não' }[document.getElementById('trdConformidade').value];
+    linha(`A parcela executada está de acordo com o Contrato/Edital/TR? ${conf}`, { negrito: true });
+    y -= 6;
+
+    linha('3 - MANUTENÇÃO DAS CONDIÇÕES DE HABILITAÇÃO, QUALIFICAÇÃO E REGULARIDADE FISCAL E TRABALHISTA', { negrito: true });
+    const resp = { sim: 'Sim', nao: 'Não', na: 'N/A' };
+    linha(`3.1 Mantém habilitação/qualificação exigida (Art. 3º, V, IN nº 7/2026)? ${resp[document.getElementById('trdHab1').value]}`);
+    linha(`3.2 Mantém regularidade fiscal/trabalhista e inc. XXXIII art. 7º CF/88? ${resp[document.getElementById('trdHab2').value]}`);
+    const obsHab = document.getElementById('trdObsHab').value;
+    if (obsHab) linha(`Obs.: ${obsHab}`);
+    y -= 4;
+
+    linha('Documentação:', { negrito: true });
+    const { data: certidoes } = await supabase.from('certidoes_contrato').select('*').eq('contrato_id', c.id);
+    const porTipo = {}; (certidoes || []).forEach(x => { porTipo[x.tipo] = x; });
+    [['PGFN', 'Certidão Conjunta Receita Federal/PGFN'], ['ESTADUAL', 'Certidão Regularidade Fazenda Estadual'],
+     ['MUNICIPAL', 'Certidão Regularidade Fazenda Municipal'], ['FGTS', 'Certidão Regularidade FGTS (CRF)'],
+     ['CNDT', 'Certidão Débitos Trabalhistas (CNDT)']].forEach(([t, rotulo]) => {
+      const cert = porTipo[t];
+      linha(`${rotulo}: nº ${cert?.numero || '—'} — validade ${cert?.data_validade ? formatarDataISO(cert.data_validade) : '—'}`);
+    });
+    y -= 6;
+  }
+
+  linha(`Por este instrumento, atestamos, para fins de cumprimento do disposto no art. ${tipo === 'TRP' ? '2º' : '3º'} da Instrução Normativa nº 7/2026, que os ${tipo === 'TRP' ? 'bens e/ou serviços acima identificados, foram recebidos provisoriamente' : 'bens e/ou serviços acima identificados, foram recebidos definitivamente'} na presente data${tipo === 'TRP' ? ', e serão objeto de avaliação quanto à adequação da entrega às condições contratuais' : ', em conformidade com os requisitos contratuais'}.`);
+  y -= 20;
+  const dataTermo = document.getElementById('trdDataTermo').value;
+  linha(`Foz do Iguaçu, ${dataTermo ? formatarDataISO(dataTermo) : new Date().toLocaleDateString('pt-BR')}`);
+  y -= 30;
+  linha('Assinatura: ______________________________');
+  linha(`Nome: ${c.fiscal_tecnico_nome || '—'}`);
+  linha('Qualificação: Fiscal do Contrato/Comissão de Recebimento');
+  y -= 10;
+  linha('Assinatura: ______________________________');
+  linha(`Nome: ${c.gestor_nome || '—'}`);
+  linha('Qualificação: Gestor do Contrato');
+
+  const fonteRodape = await doc.embedFont(StandardFonts.Helvetica);
+  doc.getPages().forEach((p, i) => {
+    p.drawText(`${i + 1} / ${doc.getPageCount()}`, { x: largura - margem - 40, y: 20, size: 9, font: fonteRodape, color: rgb(.4, .4, .4) });
+  });
+
+  const bytes = await doc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${tipo}_${(c.numero_ano || 'contrato').replace(/\W+/g, '_')}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function excluirArquivoCertidao(tipo) {
@@ -1261,6 +1423,11 @@ window.salvarCertidao = salvarCertidao;
 window.enviarCertidaoArquivo = enviarCertidaoArquivo;
 window.baixarCertidao = baixarCertidao;
 window.excluirArquivoCertidao = excluirArquivoCertidao;
+window.atualizarCamposTRD = atualizarCamposTRD;
+window.carregarItensTRD = carregarItensTRD;
+window.atualizarValorItemTRD = atualizarValorItemTRD;
+window.atualizarGlosaItemTRD = atualizarGlosaItemTRD;
+window.gerarTRPouTRD = gerarTRPouTRD;
 window.abrirEventoNoContrato = abrirEventoNoContrato;
 window.irParaEvento = irParaEvento;
 window.filtrarPainel = filtrarPainel;

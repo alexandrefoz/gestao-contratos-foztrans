@@ -1,5 +1,14 @@
 # Changelog
 
+## 25/11/2026 (continuação) — TRP e TRD (Bens/Serviços) gerados como PDF no navegador
+
+- Templates reais do TRP/TRD (Anexo I, II, III) extraídos direto do Google Docs do sistema antigo via `export?format=txt` (o editor renderiza em canvas, não dava pra ler como texto normal — exportar contornou isso). Confirma citação legal real: art. 2º (TRP) e art. 3º (TRD) da Instrução Normativa nº 7/2026.
+- Construído **TRP** e **TRD Anexo III (Bens/Serviços comuns)** como geração de PDF no navegador (`pdf-lib`, mesmo padrão do dossiê) — sem depender de Google Docs/Drive/OAuth. Nova seção "Emissão de TRP/TRD" na ficha do contrato.
+  - Itens carregados de `itens_contrato_saldo` (já tínhamos); TRD permite editar valor/glosa por item na hora de gerar.
+  - Certidões (seção 3.2 do TRD) puxadas direto de `certidoes_contrato`, recém-migrada.
+  - Conformidade e habilitação (perguntas sim/não/N.A. do TRD) são entrada manual no momento da geração.
+- **TRD Anexo II (mão de obra)** — Rheitor, Liderança — ainda não construído: é um checklist trabalhista bem mais extenso (admissão/demissão/realocação de empregado, art. 50 e art. 121 §3º da Lei 14.133/2021). Fica para uma próxima rodada.
+
 ## 25/11/2026 — Certidões migradas pro Supabase (cadastro manual, sem OCR por enquanto)
 
 - Decisão do usuário: puxar certidões/TRD pro Supabase (reverte a decisão anterior de só linkar o sistema Apps Script). Começando por certidões — é o bloqueio real pra depois migrar TRP/TRD também.
